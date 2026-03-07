@@ -44,12 +44,9 @@ export function getSupabaseAdmin(): SupabaseClient {
 }
 
 // Backward compatibility - use getter
-export const supabaseAdmin = new Proxy({} as SupabaseClient, {
-  get(target, prop) {
-    return getSupabaseAdmin()[prop as keyof SupabaseClient];
-  }
-});
-
+export function supabaseAdmin(): SupabaseClient {
+  return getSupabaseAdmin();
+}
 // Helper to create a Supabase client with app user context for RLS
 export function getSupabaseWithUser(userId: string): SupabaseClient {
   return createClient(supabaseUrl as string, (supabaseServiceRoleKey ?? supabaseAnonKey) as string, {
