@@ -49,7 +49,7 @@ export function supabaseAdmin(): SupabaseClient {
 }
 // Helper to create a Supabase client with app user context for RLS
 export function getSupabaseWithUser(userId: string): SupabaseClient {
-  return createClient(supabaseUrl as string, (supabaseServiceRoleKey ?? supabaseAnonKey) as string, {
+  return createClient(supabaseUrl as string, supabaseAnonKey as string, {
     auth: {
       persistSession: false,
       autoRefreshToken: false,
