@@ -1,0 +1,16 @@
+import { getServerSession } from "next-auth";
+import { NextResponse } from "next/server";
+
+export async function GET() {
+    try {
+        const session = await getServerSession();
+
+        if (session) {
+            return NextResponse.json({ authenticated: true }, { status: 200 });
+        }
+
+        return NextResponse.json({ authenticated: false }, { status: 401 });
+    } catch (error) {
+        return NextResponse.json({ error: "Session check failed" }, { status: 500 });
+    }
+}

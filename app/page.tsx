@@ -1,21 +1,336 @@
 "use client";
 
-import { useEffect, useState, Fragment } from "react";
-import { signOut, useSession, signIn } from "next-auth/react";
-import SplashScreen from "@/components/SplashScreen";
-import Link from "next/link";
+import { useEffect, useState, Fragment, useRef, useCallback } from "react";
+import { signOut, useSession } from "next-auth/react";
+import ScassiHero3D from "@/components/ScassiHero3D";
+import Header from "@/components/dashboard/Header";
+import Footer from "@/components/Footer";
+import Dashboard from "@/components/dashboard/Dashboard";
+import MailMindDashboard from "@/components/dashboard/MailMindDashboard";
+import dynamic from "next/dynamic";
+import TopNavbar from "@/components/dashboard/TopNavbar";
+import EmailCard from "@/components/dashboard/EmailCard";
+import { motion, AnimatePresence } from "framer-motion";
+
+const ScasiHero3D = dynamic(
+  () => import("@/components/ScassiHero3D"),
+  { ssr: false, loading: () => <div style={{ height: "100vh" }} /> }
+);
+
+// ─────────────────────────────────────────────────────────────────
+//  MAIL LOADING ANIMATION  (inline — no external file needed)
+// ─────────────────────────────────────────────────────────────────
+
+const MAIL_LINES = [
+  { id: "tl", x1: 74, y1: 66, x2: 155, y2: 132 },
+  { id: "tr", x1: 326, y1: 66, x2: 245, y2: 132 },
+  { id: "bl", x1: 74, y1: 234, x2: 155, y2: 168 },
+  { id: "br", x1: 326, y1: 234, x2: 245, y2: 168 },
+];
+const MAIL_LIFT = -30;
+
+function PurpleOrb({ visible }: { visible: boolean }) {
+  return (
+    <AnimatePresence>
+      {visible && (
+        <motion.div
+          style={{ position: "absolute", left: "50%", top: "50%", transform: "translate(-50%,-50%)", zIndex: 30 }}
+          initial={{ scale: 0, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          exit={{ scale: 0, opacity: 0 }}
+          transition={{ duration: 0.5, ease: [0.34, 1.56, 0.64, 1] }}
+        >
+          {[28, 21, 15].map((s, i) => (
+            <motion.div key={i} style={{
+              position: "absolute", width: s, height: s,
+              left: "50%", top: "50%", transform: "translate(-50%,-50%)",
+              borderRadius: "50%",
+              border: `1px solid rgba(120,50,200,${0.22 - i * 0.06})`,
+            }}
+              animate={{ scale: [1, 1.12, 1], opacity: [0.2, 0.6, 0.2] }}
+              transition={{ duration: 2.5, delay: i * 0.25, repeat: Infinity }}
+            />
+          ))}
+          <motion.div style={{
+            position: "absolute", width: 17, height: 17,
+            left: "50%", top: "50%", transform: "translate(-50%,-50%)",
+            borderRadius: "50%",
+            background: "radial-gradient(circle at 36% 30%, #cc99ff, #8822dd 44%, #5511aa 68%, #2e006e)",
+          }}
+            animate={{
+              boxShadow: [
+                "0 0 6px 3px rgba(130,40,210,0.6), 0 0 16px 5px rgba(110,20,190,0.25)",
+                "0 0 10px 5px rgba(160,60,240,0.8), 0 0 24px 8px rgba(140,30,220,0.38)",
+                "0 0 6px 3px rgba(130,40,210,0.6), 0 0 16px 5px rgba(110,20,190,0.25)",
+              ]
+            }}
+            transition={{ duration: 2.4, repeat: Infinity }}
+          >
+            <div style={{
+              position: "absolute", width: 5, height: 3, borderRadius: "50%",
+              background: "radial-gradient(ellipse, rgba(255,255,255,0.75), transparent)",
+              top: "20%", left: "18%",
+            }} />
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
 
 
+// EmptyStateEnvelope — new animated envelope for detail pane empty state
+function EmptyStateEnvelope() {
+  return (
+    <motion.div
+      style={{ position: "relative", width: 120, height: 90 }}
+      initial={{ scale: 0.7, opacity: 0, y: 10 }}
+      animate={{ scale: 1, opacity: 1, y: 0 }}
+      transition={{ duration: 0.65, ease: [0.22, 1, 0.36, 1] }}
+    >
+      <svg viewBox="0 0 400 300" width="120" height="90"
+        style={{ position: "absolute", inset: 0, overflow: "visible" }}>
+        <defs>
+          <filter id="wg-es">
+            <feGaussianBlur stdDeviation="2.5" result="b" />
+            <feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge>
+          </filter>
+          <filter id="bg-es">
+            <feGaussianBlur stdDeviation="4" result="b" />
+            <feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge>
+          </filter>
+          <linearGradient id="envFill-es" x1="0" y1="0" x2="0.2" y2="1">
+            <stop offset="0%" stopColor="#ede5ff" />
+            <stop offset="100%" stopColor="#e2d6f8" />
+          </linearGradient>
+        </defs>
+        <rect x="26" y="22" width="348" height="256" rx="30"
+          fill="url(#envFill-es)"
+          style={{ filter: "drop-shadow(0 4px 12px rgba(120,50,200,0.10))" }}
+        />
+        <rect x="26" y="22" width="348" height="256" rx="30"
+          fill="none" stroke="#6611bb" strokeWidth="11" strokeLinejoin="round"
+          filter="url(#bg-es)"
+        />
+        {[
+          [74, 66, 155, 132], [326, 66, 245, 132],
+          [74, 234, 155, 168], [326, 234, 245, 168],
+        ].map(([x1, y1, x2, y2], i) => (
+          <line key={i} x1={x1} y1={y1} x2={x2} y2={y2}
+            stroke="#6611bb" strokeWidth="9" strokeLinecap="round"
+            filter="url(#wg-es)"
+          />
+        ))}
+      </svg>
+      <div style={{ position: "absolute", left: "50%", top: "50%", transform: "translate(-50%,-50%)", zIndex: 30 }}>
+        {[28, 21, 15].map((s, i) => (
+          <motion.div key={i} style={{
+            position: "absolute", width: s, height: s,
+            left: "50%", top: "50%", transform: "translate(-50%,-50%)",
+            borderRadius: "50%", border: `1px solid rgba(120,50,200,${0.22 - i * 0.06})`,
+          }}
+            animate={{ scale: [1, 1.12, 1], opacity: [0.2, 0.6, 0.2] }}
+            transition={{ duration: 2.5, delay: i * 0.25, repeat: Infinity }}
+          />
+        ))}
+        <motion.div style={{
+          position: "absolute", width: 17, height: 17,
+          left: "50%", top: "50%", transform: "translate(-50%,-50%)",
+          borderRadius: "50%",
+          background: "radial-gradient(circle at 36% 30%, #cc99ff, #8822dd 44%, #5511aa 68%, #2e006e)",
+        }}
+          animate={{
+            boxShadow: [
+              "0 0 6px 3px rgba(130,40,210,0.6), 0 0 16px 5px rgba(110,20,190,0.25)",
+              "0 0 10px 5px rgba(160,60,240,0.8), 0 0 24px 8px rgba(140,30,220,0.38)",
+              "0 0 6px 3px rgba(130,40,210,0.6), 0 0 16px 5px rgba(110,20,190,0.25)",
+            ]
+          }} transition={{ duration: 2.4, repeat: Infinity }}>
+          <div style={{
+            position: "absolute", width: 5, height: 3, borderRadius: "50%",
+            background: "radial-gradient(ellipse,rgba(255,255,255,0.75),transparent)",
+            top: "20%", left: "18%"
+          }} />
+        </motion.div>
+      </div>
+    </motion.div>
+  );
+}
 
+function MailLoadingScreen({ onDone }: { onDone: () => void }) {
+  const [phase, setPhase] = useState(0);
+  // Store onDone in a ref so the effect never re-runs when the parent re-renders
+  const doneRef = useRef<() => void>(onDone);
+  const firedRef = useRef(false);
+
+  useEffect(() => {
+    // Runs ONCE on mount — empty deps prevents any loop
+    const t1 = setTimeout(() => setPhase(1), 300);
+    const t2 = setTimeout(() => setPhase(2), 1050);
+    const t3 = setTimeout(() => {
+      if (!firedRef.current) {
+        firedRef.current = true;
+        doneRef.current();   // transition to mailmind, exactly once
+      }
+    }, 2200);
+    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);  // ← intentionally empty: do NOT add onDone here or it loops
+
+  return (
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 99999,
+      display: "flex", flexDirection: "column",
+      alignItems: "center", justifyContent: "center",
+      background: "radial-gradient(ellipse at 55% 40%, #f0e8ff 0%, #f8f2ff 30%, #fdf8ff 65%, #ffffff 100%)",
+    }}>
+      {/* Faint network lines */}
+      <svg style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none", opacity: 0.13 }}>
+        <line x1="15%" y1="8%" x2="82%" y2="62%" stroke="#8833bb" strokeWidth="0.7" />
+        <line x1="68%" y1="4%" x2="28%" y2="82%" stroke="#8833bb" strokeWidth="0.7" />
+        <line x1="8%" y1="48%" x2="92%" y2="28%" stroke="#8833bb" strokeWidth="0.6" />
+        <line x1="48%" y1="2%" x2="88%" y2="88%" stroke="#8833bb" strokeWidth="0.5" />
+        <line x1="5%" y1="75%" x2="60%" y2="15%" stroke="#8833bb" strokeWidth="0.5" />
+        <circle cx="38%" cy="22%" r="2.5" fill="#8833bb" />
+        <circle cx="74%" cy="57%" r="2" fill="#8833bb" />
+        <circle cx="54%" cy="78%" r="1.6" fill="#8833bb" />
+        <circle cx="18%" cy="62%" r="1.8" fill="#8833bb" />
+        <circle cx="86%" cy="18%" r="1.4" fill="#8833bb" />
+      </svg>
+
+      {/* Gmail-sized envelope */}
+      <motion.div
+        style={{ position: "relative", width: 120, height: 90 }}
+        initial={{ scale: 0.4, opacity: 0, y: 20 }}
+        animate={{ scale: 1, opacity: 1, y: 0 }}
+        transition={{ duration: 0.65, ease: [0.22, 1, 0.36, 1] }}
+      >
+        <svg
+          viewBox="0 0 400 300"
+          width="120" height="90"
+          style={{ position: "absolute", inset: 0, overflow: "visible" }}
+        >
+          <defs>
+            <filter id="wg">
+              <feGaussianBlur stdDeviation="2.5" result="b" />
+              <feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge>
+            </filter>
+            <filter id="bg">
+              <feGaussianBlur stdDeviation="4" result="b" />
+              <feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge>
+            </filter>
+            <linearGradient id="envFill" x1="0" y1="0" x2="0.2" y2="1">
+              <stop offset="0%" stopColor="#ede5ff" />
+              <stop offset="100%" stopColor="#e2d6f8" />
+            </linearGradient>
+          </defs>
+
+          <motion.rect x="26" y="22" width="348" height="256" rx="30"
+            fill="url(#envFill)"
+            style={{ filter: "drop-shadow(0 4px 12px rgba(120,50,200,0.12))" }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: phase >= 2 ? 1 : 0 }}
+            transition={{ duration: 0.35 }}
+          />
+
+          <motion.rect x="26" y="22" width="348" height="256" rx="30"
+            fill="none" stroke="#6611bb" strokeWidth="11" strokeLinejoin="round"
+            filter="url(#bg)"
+            initial={{ pathLength: 0, opacity: 0 }}
+            animate={phase >= 2 ? { pathLength: 1, opacity: 1 } : { pathLength: 0, opacity: 0 }}
+            transition={{ duration: 0.5, ease: "easeOut" }}
+          />
+
+          {MAIL_LINES.map((ln, i) => (
+            <motion.line key={ln.id}
+              x2={ln.x2} y2={ln.y2}
+              stroke="#6611bb" strokeWidth="9" strokeLinecap="round"
+              filter="url(#wg)"
+              initial={{ x1: ln.x1, y1: ln.y1, opacity: 0 }}
+              animate={
+                phase === 0
+                  ? { x1: ln.x1, y1: ln.y1, opacity: 0 }
+                  : phase === 1
+                    ? {
+                      x1: ln.x1, y1: ln.y1 + MAIL_LIFT, opacity: 1,
+                      transition: { duration: 0.45, delay: i * 0.06, ease: "easeOut" }
+                    }
+                    : {
+                      x1: ln.x1, y1: ln.y1, opacity: 1,
+                      transition: { duration: 0.4, delay: i * 0.05, ease: [0.34, 1.3, 0.64, 1] }
+                    }
+              }
+            />
+          ))}
+        </svg>
+
+        <PurpleOrb visible={phase >= 2} />
+      </motion.div>
+
+      {/* Label */}
+      <AnimatePresence>
+        {phase >= 2 && (
+          <motion.p
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.5, delay: 0.45 }}
+            style={{
+              marginTop: 18, color: "rgba(90,30,160,0.5)", fontSize: 10,
+              letterSpacing: "0.28em", textTransform: "uppercase", fontWeight: 500,
+              fontFamily: "'SF Pro Display','Segoe UI',system-ui,sans-serif",
+            }}
+          >
+            ✦ &nbsp; Loading your inbox &nbsp; ✦
+          </motion.p>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  HOME — Main export. Controls which view is shown.
+//  'landing'  → not logged in  (ScassiHero3D + Header + Dashboard + Footer)
+//  'loading'  → just logged in (MailLoadingScreen animation)
+//  'mailmind' → after loading  (Scasi inbox purple glass dashboard)
+//  'inbox'    → clicked any nav (your complete original inbox code)
+// ─────────────────────────────────────────────────────────────────
 
 export default function Home() {
   const { data: session } = useSession();
+
   useEffect(() => {
     console.log("SESSION:", session);
   }, [session]);
 
+  // ── view state to control which screen is shown ──
+  const [appView, setAppView] = useState<"landing" | "loading" | "mailmind" | "inbox">("landing");
+  // ── which folder to open when inbox loads ──
+  const [initialFolder, setInitialFolder] = useState("inbox");
+  // Track if we've shown the loading animation
+  const [hasShownLoading, setHasShownLoading] = useState(false);
+
+  // When session arrives switch from landing → loading animation
+  useEffect(() => {
+    if (session && appView === "landing" && !hasShownLoading) {
+      setAppView("loading");
+      setHasShownLoading(true);
+    }
+  }, [session, appView, hasShownLoading]);
+
+  // Called by MailLoadingScreen when animation finishes — wrapped in useCallback so it never changes reference
+  const handleLoadingDone = useCallback(() => {
+    setAppView("mailmind");
+  }, []);
+
+  // Called by MailMindDashboard when user clicks any nav item
+  const handleMailMindNavigate = (folder: string) => {
+    setActiveFolder(folder);
+    setAppView("inbox");
+  };
+
   const [hoverFile, setHoverFile] = useState<any>(null);
-  const [showSplash, setShowSplash] = useState(true);
   const [showProfile, setShowProfile] = useState(false);
   // 🕒 Current Date & Time
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -23,8 +338,8 @@ export default function Home() {
   const [geminiQuestion, setGeminiQuestion] = useState("");
   const [geminiReply, setGeminiReply] = useState("");
   const [loadingGemini, setLoadingGemini] = useState(false);
-
-
+  const [activePage, setActivePage] = useState("overview");
+  const [activeView, setActiveView] = useState("dashboard");
 
   const [hoveredBtn, setHoveredBtn] = useState<string | null>(null);
 
@@ -39,10 +354,6 @@ export default function Home() {
   const [showCompose, setShowCompose] = useState(false);
   const [showGemini, setShowGemini] = useState(false);
 
-
-
-
-
   const [aiReply, setAiReply] = useState("");
   const [loadingReply, setLoadingReply] = useState(false);
   const [editableReply, setEditableReply] = useState("");
@@ -54,26 +365,22 @@ export default function Home() {
   // ✅ Load Starred Emails from localStorage on startup
   useEffect(() => {
     const savedStarred = localStorage.getItem("starredIds");
-
     if (savedStarred) {
       setStarredIds(JSON.parse(savedStarred));
     }
   }, []);
-
 
   // ⏳ Snoozed Emails (hidden temporarily)
   const [snoozedIds, setSnoozedIds] = useState<string[]>([]);
   // ✅ Load Snoozed Emails from localStorage on startup
   useEffect(() => {
     const savedSnoozed = localStorage.getItem("snoozedIds");
-
     if (savedSnoozed) {
       setSnoozedIds(JSON.parse(savedSnoozed));
     }
   }, []);
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
-
 
   // ✅ Done Emails (removed)
   const [doneIds, setDoneIds] = useState<string[]>([]);
@@ -82,7 +389,6 @@ export default function Home() {
     const savedStarred = JSON.parse(localStorage.getItem("starredIds") || "[]");
     const savedSnoozed = JSON.parse(localStorage.getItem("snoozedIds") || "[]");
     const savedDone = JSON.parse(localStorage.getItem("doneIds") || "[]");
-
     setStarredIds(savedStarred);
     setSnoozedIds(savedSnoozed);
     setDoneIds(savedDone);
@@ -91,18 +397,15 @@ export default function Home() {
   // ✅ Load Done Emails from localStorage on startup
   useEffect(() => {
     const savedDone = localStorage.getItem("doneIds");
-
     if (savedDone) {
       setDoneIds(JSON.parse(savedDone));
     }
   }, []);
 
-  const [activeFolder, setActiveFolder] =
-    useState("inbox"); // inbox | starred | snoozed | done | drafts
+  // ── MODIFIED: activeFolder now initialises from the value set by Scasi inbox nav ──
+  const [activeFolder, setActiveFolder] = useState("inbox");
 
-
-
-
+  // Sync activeFolder when inbox view is first entered from Scasi inbox
 
   // AI States
   const [aiSummary, setAiSummary] = useState("");
@@ -114,7 +417,6 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
 
   const [selectedMail, setSelectedMail] = useState<any>(null);
-
 
   const [summary, setSummary] = useState<string>("");
   const [summarizing, setSummarizing] = useState(false);
@@ -130,7 +432,6 @@ export default function Home() {
   const [deadline, setDeadline] = useState<string | null>("");
   const [urgency, setUrgency] = useState("Normal");
 
-
   // ✅ Slides list (keep outside if)
   const slides = [
     "/login/slide1.png",
@@ -142,50 +443,43 @@ export default function Home() {
 
   // ✅ Slide state must be outside condition
   const [currentSlide, setCurrentSlide] = useState(0);
+
   // ⭐ Toggle Star
   function toggleStar() {
     if (!selectedMail) return;
-
     setStarredIds((prev) => {
       const updated = prev.includes(selectedMail.id)
         ? prev.filter((id) => id !== selectedMail.id)
         : [...prev, selectedMail.id];
-
       localStorage.setItem("starredIds", JSON.stringify(updated));
       return updated;
     });
   }
 
-
-
   // ⏳ Snooze Email (hide from inbox)
   function snoozeMail() {
     if (!selectedMail) return;
-
     setSnoozedIds((prev) => {
       const updated = [...prev, selectedMail.id];
       localStorage.setItem("snoozedIds", JSON.stringify(updated));
       return updated;
     });
-
     setSelectedMail(null);
   }
+
   async function askGemini() {
     if (!selectedMail) {
       alert("Select an email first");
       return;
     }
-
     setLoadingGemini(true);
     setGeminiReply("");
-
     const emailText =
       selectedMail.subject +
       "\n\n" +
       selectedMail.snippet +
       "\n\n" +
       (selectedMail.body || "");
-
     const res = await fetch("/api/gemini", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -194,186 +488,136 @@ export default function Home() {
         question: geminiQuestion || "Summarize this email clearly",
       }),
     });
-
     const data = await res.json();
-
     if (data.reply) {
       setGeminiReply(data.reply);
     } else {
       setGeminiReply("❌ Gemini failed: " + data.error);
     }
-
     setLoadingGemini(false);
   }
-
 
   // ✅ Mark Done (remove from inbox)
   function markDone() {
     if (!selectedMail) return;
-
     setDoneIds((prev) => {
       const updated = [...prev, selectedMail.id];
       localStorage.setItem("doneIds", JSON.stringify(updated));
       return updated;
     });
-
     setSelectedMail(null);
   }
-  // =======================================
+
   function deleteSelectedMail() {
     if (!selectedMail) {
       alert("❌ Please select an email first");
       return;
     }
-
     alert("🗑 Delete feature will be connected to Gmail API next");
-
-    // Later we will call Gmail API delete here
   }
-
-
-
-
 
   // ✅ Fade slideshow runs only when NOT logged in
   useEffect(() => {
     if (session) return;
-
     const interval = setInterval(() => {
       setCurrentSlide((prev) => {
         let next = Math.floor(Math.random() * slides.length);
-
         while (next === prev) {
           next = Math.floor(Math.random() * slides.length);
         }
-
         return next;
       });
     }, 3500);
-
     return () => clearInterval(interval);
   }, [session]);
 
-
   const loadEmails = async () => {
     setLoading(true);
-
     const res = await fetch(
       `/api/gmail${nextPageToken ? `?pageToken=${nextPageToken}` : ""}`
     );
-
     const data = await res.json();
-
     setEmails((prev) => {
       const combined = [...prev, ...(data.emails || [])];
-
-      // ✅ Remove duplicate emails using id
       const unique = Array.from(
         new Map(combined.map((mail) => [mail.id, mail])).values()
       );
-
       return unique;
     });
-
     setNextPageToken(data.nextPageToken || null);
-
     setLoading(false);
   };
 
   // ✅ FIXED: Combined function that fetches email AND generates AI
   const openMailAndGenerateAI = async (id: string, mailPreview: any) => {
-    // Reset AI states
     setAiSummary("");
     setAiReason("");
     setAiReply("");
     setLoadingAI(false);
     setDeadline(null);
     setUrgency("");
-
-
-    // Fetch full email content
     const res = await fetch(`/api/gmail/message?id=${id}`);
     const fullEmailData = await res.json();
-
-    // Show mail content
     setSelectedMail(fullEmailData);
-    // ✅ Deadline Detection
     const combinedText =
       fullEmailData.subject + " " +
       fullEmailData.snippet + " " +
       fullEmailData.body;
-
     const detected = extractDeadline(combinedText);
-
     setDeadline(detected);
     setUrgency(getUrgencyLevel(detected));
-
   };
 
   async function generateReply() {
     console.log("✅ generateReply() running...");
-
     if (!selectedMail) {
       console.log("❌ No email selected");
       alert("Please select an email first");
       return;
     }
-
     console.log("📧 Email data:", {
       subject: selectedMail.subject,
       snippet: selectedMail.snippet?.substring(0, 100),
     });
-
     setLoadingReply(true);
     setAiReply("");
-
     try {
       console.log("🚀 Sending request to /api/ai/reply...");
-
       const res = await fetch("/api/ai/reply", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           subject: selectedMail.subject,
           snippet: selectedMail.snippet || selectedMail.body || "",
         }),
       });
-
       console.log("📥 Response status:", res.status);
-
       const data = await res.json();
       console.log("📦 Response data:", data);
-
       if (data.error) {
         console.error("❌ API Error:", data.error);
         alert("Error: " + data.error);
         setLoadingReply(false);
         return;
       }
-
       setAiReply(data.reply);
-      setEditableReply(data.reply); // ✅ editable copy
+      setEditableReply(data.reply);
       console.log("✅ Reply generated successfully!");
     } catch (error) {
       console.error("❌ Fetch error:", error);
       alert("Failed to generate reply. Check console for details.");
     }
-
     setLoadingReply(false);
   }
 
   async function generateSummary(mail: any) {
     setLoadingAI(true);
     const emailContent = cleanEmailBody(mail.body || mail.snippet || "");
-
     if (!emailContent) {
       setAiSummary("⚠️ No email content available.");
       setLoadingAI(false);
       return;
     }
-
     const res = await fetch("/api/ai/summarize", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -384,19 +628,14 @@ export default function Home() {
         date: mail.date,
       }),
     });
-
     const data = await res.json();
     setAiSummary(data.summary || "No summary generated.");
-
     setLoadingAI(false);
   }
 
   // ✅ NEW: AI Priority function for individual emails
   async function generateAIPriorityForMail(mail: any) {
-
-    // ✅ Already generated → skip
     if (aiPriorityMap[mail.id]) return;
-
     const res = await fetch("/api/ai/priority", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -405,9 +644,7 @@ export default function Home() {
         snippet: mail.snippet,
       }),
     });
-
     const data = await res.json();
-
     if (data.result?.score) {
       setAiPriorityMap((prev: any) => ({
         ...prev,
@@ -415,7 +652,6 @@ export default function Home() {
       }));
     }
   }
-
 
   async function generateExplanation(mail: any) {
     setLoadingAI(true);
@@ -436,10 +672,8 @@ export default function Home() {
 
   const summarizeEmail = async () => {
     if (!selectedMail?.body && !selectedMail?.snippet) return;
-
     setSummarizing(true);
     setSummary("");
-
     const res = await fetch("/api/ai/summarize", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -447,9 +681,7 @@ export default function Home() {
         text: selectedMail.body || selectedMail.snippet,
       }),
     });
-
     const data = await res.json();
-
     const formatted = data.summary
       .replace(/https?:\/\/\S+/g, "")
       .replace(/🔗\s*\[Link Removed\]/g, "")
@@ -461,7 +693,6 @@ export default function Home() {
       .replace(/Click the below/g, "See link below")
       .replace(/CLICK HERE FOR LINK:/g, "")
       .trim();
-
     setSummary(formatted);
     setSummarizing(false);
   };
@@ -469,7 +700,6 @@ export default function Home() {
   function extractTasks(text: string) {
     const lower = text.toLowerCase();
     const tasks: string[] = [];
-
     if (
       lower.includes("payment due") ||
       lower.includes("pay now") ||
@@ -478,7 +708,6 @@ export default function Home() {
     ) {
       tasks.push("💳 Make the payment");
     }
-
     if (
       lower.includes("meeting") ||
       lower.includes("zoom") ||
@@ -487,7 +716,6 @@ export default function Home() {
     ) {
       tasks.push("📅 Attend the meeting");
     }
-
     if (
       lower.includes("job") ||
       lower.includes("internship") ||
@@ -496,152 +724,97 @@ export default function Home() {
     ) {
       tasks.push("📝 Apply / Respond to recruiter");
     }
-
     if (lower.includes("deadline") || lower.includes("urgent")) {
       tasks.push("⏰ Take action immediately");
     }
-
     if (tasks.length === 0) tasks.push("📌 No urgent action required");
-
     return tasks;
   }
+
   function extractDeadline(text: string) {
     if (!text) return null;
-
     const lower = text.toLowerCase();
-
-    // Common patterns
     if (lower.includes("tomorrow")) return "Tomorrow";
     if (lower.includes("today")) return "Today";
-
-    // Match DD Month pattern like: 21 Feb
     const match = text.match(/\b(\d{1,2})\s?(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\b/i);
-
     if (match) {
-      return match[0]; // Example: "21 Feb"
+      return match[0];
     }
-
-    // Match full date: 21/02/2026
     const match2 = text.match(/\b\d{1,2}\/\d{1,2}\/\d{2,4}\b/);
-
     if (match2) {
       return match2[0];
     }
-
     return null;
   }
+
   function getUrgencyLevel(deadlineText: string | null) {
     if (!deadlineText) return "None";
-
     if (deadlineText === "Today") return "🔥 Very High";
     if (deadlineText === "Tomorrow") return "⚠️ High";
-
     return "📌 Medium";
   }
 
-
   useEffect(() => {
     setMounted(true);
-
     const interval = setInterval(() => {
       setCurrentTime(new Date());
     }, 1000);
-
     return () => clearInterval(interval);
   }, []);
 
   // ✅ FIX 4: Load emails when session is available
   useEffect(() => {
     if (!session) return;
-
     console.log("✅ Session found. Loading emails...");
-
-    // Show splash screen
-    setShowSplash(true);
-
-    // Hide splash after 1.5 seconds
-    const timer = setTimeout(() => {
-      setShowSplash(false);
-    }, 1500);
-
-    // Load emails immediately (don't wait for splash)
     const fetchEmails = async () => {
       setLoading(true);
-
       try {
         const res = await fetch(`/api/gmail`);
         const data = await res.json();
         console.log("FIRST EMAIL:", data.emails[0]);
-
-
         console.log("📧 Emails loaded:", data.emails?.length || 0);
-
         setEmails(data.emails || []);
         setNextPageToken(data.nextPageToken || null);
-        // 🔔 Notification Logic (New mails since last open)
         const lastSeen = localStorage.getItem("lastSeenTime");
-
         let count = 0;
-
         if (lastSeen) {
           const lastTime = new Date(lastSeen).getTime();
-
           count = (data.emails || []).filter((mail: any) => {
             const mailTime = new Date(mail.date).getTime();
             return mailTime > lastTime;
           }).length;
         }
-
-        // Set notification count
         setNewMailCount(count);
-
-        // Update last seen time to NOW
-        // 🔔 Notification Logic (New mails since last click)
-
         let freshMails: any[] = [];
-
         if (lastSeen) {
           const lastTime = new Date(lastSeen).getTime();
-
           freshMails = (data.emails || []).filter((mail: any) => {
             const mailTime = new Date(mail.date).getTime();
             return mailTime > lastTime;
           });
         } else {
-          // First time user opens app
           freshMails = [];
         }
-
-        // Save new mails + count
         setNewMails(freshMails);
         setNewMailCount(freshMails.length);
-
-
       } catch (error) {
         console.error("❌ Error loading emails:", error);
       }
-
       setLoading(false);
     };
-
     fetchEmails();
-
-    return () => clearTimeout(timer);
-  }, [session]); // ✅ Only depends on session
-
+  }, [session]);
 
   const refreshInbox = async () => {
-    setEmails([]); // clear old emails
-    setNextPageToken(null); // reset pagination
-    await loadEmails(); // fetch fresh inbox
+    setEmails([]);
+    setNextPageToken(null);
+    await loadEmails();
   };
 
   function getEmailCategory(mail: any) {
     const subject = (mail.subject || "").toLowerCase();
     const snippet = (mail.snippet || "").toLowerCase();
-
     const text = subject + " " + snippet;
-
     if (
       text.includes("job") ||
       text.includes("intern") ||
@@ -650,7 +823,6 @@ export default function Home() {
     ) {
       return "Do Now";
     }
-
     if (
       text.includes("event") ||
       text.includes("meet") ||
@@ -659,7 +831,6 @@ export default function Home() {
     ) {
       return "Needs Decision";
     }
-
     if (
       text.includes("newsletter") ||
       text.includes("update") ||
@@ -667,18 +838,14 @@ export default function Home() {
     ) {
       return "Waiting";
     }
-
     return "Low Energy";
   }
 
-
   function getPriorityScore(mail: any) {
     let score = 0;
-
     const subject = (mail.subject || "").toLowerCase();
     const snippet = (mail.snippet || "").toLowerCase();
     const text = subject + " " + snippet;
-
     if (
       text.includes("urgent") ||
       text.includes("today") ||
@@ -688,7 +855,6 @@ export default function Home() {
     else if (text.includes("tomorrow")) score += 40;
     else if (text.includes("deadline") || text.includes("last date"))
       score += 35;
-
     if (
       text.includes("job") ||
       text.includes("intern") ||
@@ -703,48 +869,51 @@ export default function Home() {
       score += 18;
     else if (text.includes("meeting") || text.includes("event")) score += 15;
     else score += 5;
-
     if (mail.date) {
       const receivedDate = new Date(mail.date);
       const now = new Date();
-
       if (!isNaN(receivedDate.getTime())) {
         const diffHours =
           (now.getTime() - receivedDate.getTime()) / (1000 * 60 * 60);
-
         if (diffHours < 1) score += 30;
         else if (diffHours < 24) score += 25;
         else if (diffHours < 48) score += 15;
         else score += 5;
       }
     }
-
     return Math.min(score, 100);
   }
 
   function getPriorityColor(score: number) {
-    if (score >= 80) return "#ff4d4d";
-    if (score >= 50) return "#ffc107";
-    return "#4caf50";
+    if (score >= 80) return "#DC2626";
+    if (score >= 50) return "#D97706";
+    return "#059669";
   }
-  function getCategoryColor(category: string) {
-    if (category === "Do Now") return "#EF4444"; // 🔥 Red
-    if (category === "Needs Decision") return "#8B5CF6"; // 🟣 Purple
-    if (category === "Waiting") return "#3B82F6"; // 🔵 Blue
-    if (category === "Low Energy") return "#10B981"; // 🟢 Green
 
-    return "#6B7280"; // Default Gray
+  // ── DISTINCT CATEGORY COLOURS ─────────────────────────────────
+  function getCategoryColor(category: string) {
+    if (category === "Do Now") return "#DC2626"; // red
+    if (category === "Needs Decision") return "#D97706"; // amber
+    if (category === "Waiting") return "#2563EB"; // blue
+    if (category === "Low Energy") return "#059669"; // green
+    return "#7C3AED";                                    // purple default
+  }
+
+  function getCategoryBg(category: string) {
+    if (category === "Do Now") return "#FEF2F2";
+    if (category === "Needs Decision") return "#FFFBEB";
+    if (category === "Waiting") return "#EFF6FF";
+    if (category === "Low Energy") return "#F0FDF4";
+    return "#F5F3FF";
   }
 
   function getBurnoutStats(emails: any[]) {
     let stressScore = 0;
-
     emails.forEach((mail) => {
       const text =
         (mail.subject || "").toLowerCase() +
         " " +
         (mail.snippet || "").toLowerCase();
-
       if (
         text.includes("urgent") ||
         text.includes("deadline") ||
@@ -753,34 +922,26 @@ export default function Home() {
       ) {
         stressScore += 15;
       }
-
       if (getPriorityScore(mail) > 70) {
         stressScore += 10;
       }
-
       if (mail.date) {
         const dateObj = new Date(mail.date);
         const hour = dateObj.getHours();
-
         if (hour >= 23 || hour <= 5) {
           stressScore += 20;
         }
       }
     });
-
     if (stressScore > 100) stressScore = 100;
-
     let stressLevel = "Low";
     if (stressScore > 70) stressLevel = "High";
     else if (stressScore > 40) stressLevel = "Medium";
-
     let workloadTrend = emails.length > 15 ? "Increasing 📈" : "Stable ✅";
-
     let recommendation =
       stressLevel === "High"
         ? "Delegate or Snooze low-priority emails"
         : "You are managing well";
-
     return {
       stressScore,
       stressLevel,
@@ -793,32 +954,18 @@ export default function Home() {
     const subject = (mail.subject || "").toLowerCase();
     const snippet = (mail.snippet || "").toLowerCase();
     const from = (mail.from || "").toLowerCase();
-
     const text = subject + " " + snippet;
-
     const spamWords = [
-      "free",
-      "offer",
-      "limited time",
-      "unsubscribe",
-      "winner",
-      "congratulations",
-      "lottery",
-      "claim",
-      "buy now",
-      "click here",
-      "discount",
-      "cash prize",
+      "free", "offer", "limited time", "unsubscribe", "winner",
+      "congratulations", "lottery", "claim", "buy now", "click here",
+      "discount", "cash prize",
     ];
-
     for (let word of spamWords) {
       if (text.includes(word)) return true;
     }
-
     if (from.includes("noreply") && text.includes("unsubscribe")) {
       return true;
     }
-
     return false;
   }
 
@@ -830,7 +977,6 @@ export default function Home() {
 
   function extractFirstLink(text: string) {
     if (!text) return null;
-
     const hrefMatch = text.match(/href=["']([^"']+)["']/i);
     if (hrefMatch && hrefMatch[1] && hrefMatch[1].startsWith("http")) {
       let link = hrefMatch[1];
@@ -846,13 +992,10 @@ export default function Home() {
         return link;
       }
     }
-
     const cleanText = text.replace(/<[^>]*>/g, " ");
     const urlRegex = /https?:\/\/[^\s<>"{}|\\^`\[\]]+/g;
     const matches = cleanText.match(urlRegex);
-
     if (!matches || matches.length === 0) return null;
-
     const validLinks = matches.filter((url) => {
       const lower = url.toLowerCase();
       return (
@@ -866,13 +1009,10 @@ export default function Home() {
         url.length < 500
       );
     });
-
     if (validLinks.length === 0) return null;
-
     let link = validLinks[0];
     link = link.replace(/[.,;:)\]]+$/, "");
     link = link.replace(/&amp;/g, "&");
-
     return link;
   }
 
@@ -888,14 +1028,9 @@ export default function Home() {
   /* ✅ ADD THIS EXACTLY HERE */
   function extractEmail(raw: string) {
     if (!raw) return "";
-
-    // Case 1: Name <email>
     const match = raw.match(/<(.+?)>/);
     if (match) return match[1];
-
-    // Case 2: Direct email
     if (raw.includes("@")) return raw.trim();
-
     return "";
   }
 
@@ -920,328 +1055,36 @@ export default function Home() {
     fontWeight: 600,
   };
 
+  // ── RENDER: Not logged in → landing ──
   if (!session) {
-
     return (
-      <div
-        style={{
-          minHeight: "100vh",
-          background:
-            "linear-gradient(135deg, #4F46E5 0%, #7C3AED 50%, #A78BFA 100%)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          padding: "60px",
-          overflow: "hidden",
-        }}
-      >
-        <div
-
-        >
-
-          {/* ✅ TOP HEADER ROW */}
-          <div
-            style={{
-              position: "absolute",
-              top: 25,
-              left: 45,
-              right: 45,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-            }}
-          >
-            {/* ✅ Left: Logo + Name */}
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <img
-                src="/logo.png"
-                alt="MailMind Logo"
-                style={{
-                  width: 42,
-                  height: 42,
-                  borderRadius: 10,
-                  objectFit: "contain",
-                }}
-              />
-
-              <h2
-                style={{
-                  color: "white",
-                  fontWeight: 800,
-                  fontSize: 22,
-                  margin: 0,
-                }}
-              >
-                MailMind
-              </h2>
-            </div>
-            {/* 🕒 Center Date & Time */}
-            <div
-              style={{
-                position: "absolute",
-                left: "50%",
-                transform: "translateX(-50%)",
-                padding: "8px 18px",
-                borderRadius: 14,
-                background: "rgba(255,255,255,0.12)",
-                backdropFilter: "blur(10px)",
-                color: "rgba(255,255,255,0.9)",
-                fontSize: 14,
-                fontWeight: 600,
-              }}
-            >
-
-              {/* 🕒 Center Date & Time */}
-              {mounted && (
-                <div
-                  style={{
-                    position: "absolute",
-                    left: "50%",
-                    transform: "translateX(-50%)",
-                    padding: "8px 18px",
-                    borderRadius: 14,
-                    background: "rgba(255,255,255,0.12)",
-                    backdropFilter: "blur(10px)",
-                    color: "rgba(255,255,255,0.9)",
-                    fontSize: 14,
-                    fontWeight: 600,
-                    letterSpacing: "0.5px",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {currentTime.toLocaleString("en-IN", {
-                    weekday: "short",
-                    day: "2-digit",
-                    month: "short",
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
-                </div>
-              )}
-
-
-            </div>
-
-
-            {/* ✅ Right: Features Button */}
-            <Link href="/features" className="features-btn">
-              Features →
-            </Link>
-          </div>
-
-
-
-          {/* Brand Name */}
-
-        </div>
-
-
-        {/* ✅ Left Text Section */}
-        <div style={{ maxWidth: "520px", color: "white" }}>
-          <h1
-            style={{
-              fontSize: "64px",
-              fontWeight: 800,
-              lineHeight: 1.1,
-            }}
-          >
-            Where email <br /> meets <br /> intelligence
-          </h1>
-
-          <p style={{ marginTop: 20, fontSize: 18, opacity: 0.9 }}>
-            MailMind helps you summarize, prioritize and reply smarter —
-            powered by AI.
-          </p>
-
-          {/* Buttons */}
-          <div style={{ display: "flex", gap: 20, marginTop: 40 }}>
-            <button
-              onClick={() => signIn("google")}
-              style={{
-                padding: "14px 28px",
-                borderRadius: 14,
-                fontWeight: 700,
-                cursor: "pointer",
-                fontSize: 16,
-                border: "none",
-                position: "relative",
-                overflow: "hidden",
-                background: "white",
-                color: "#2563EB",
-              }}
-              onMouseEnter={(e) => {
-                const span = e.currentTarget.querySelector(
-                  ".fill"
-                ) as HTMLElement;
-                span.style.transform = "translateX(0)";
-                e.currentTarget.style.color = "white";
-              }}
-              onMouseLeave={(e) => {
-                const span = e.currentTarget.querySelector(
-                  ".fill"
-                ) as HTMLElement;
-                span.style.transform = "translateX(-100%)";
-                e.currentTarget.style.color = "#2563EB";
-              }}
-            >
-              {/* Fill Background */}
-              <span
-                className="fill"
-                style={{
-                  position: "absolute",
-                  top: 0,
-                  left: 0,
-                  width: "100%",
-                  height: "100%",
-                  background: "linear-gradient(135deg,#2563EB,#0EA5E9)",
-                  transform: "translateX(-100%)",
-                  transition: "all 0.4s ease",
-                  zIndex: 0,
-                }}
-              ></span>
-
-              {/* Button Text */}
-              <span style={{ position: "relative", zIndex: 1 }}>
-                Sign in with Google →
-              </span>
-            </button>
-
-            <button
-              onClick={() => signIn("azure-ad")}
-              style={{
-                padding: "14px 32px",
-                borderRadius: 14,
-                fontWeight: 700,
-                cursor: "pointer",
-                fontSize: 16,
-                border: "none",
-                position: "relative",
-                overflow: "hidden",
-
-                // Default Background = White
-                background: "white",
-                color: "#2563EB",
-              }}
-              onMouseEnter={(e) => {
-                const span = e.currentTarget.querySelector(
-                  ".fill-outlook"
-                ) as HTMLElement;
-
-                // Slide Blue fill in
-                span.style.transform = "translateX(0)";
-
-                // Text becomes White
-                e.currentTarget.style.color = "white";
-              }}
-              onMouseLeave={(e) => {
-                const span = e.currentTarget.querySelector(
-                  ".fill-outlook"
-                ) as HTMLElement;
-
-                // Slide fill back out
-                span.style.transform = "translateX(-100%)";
-
-                // Text becomes Blue again
-                e.currentTarget.style.color = "#2563EB";
-              }}
-            >
-              {/* Fill Background (Blue Slide) */}
-              <span
-                className="fill-outlook"
-                style={{
-                  position: "absolute",
-                  top: 0,
-                  left: 0,
-                  width: "100%",
-                  height: "100%",
-
-                  // Hover Fill = Blue Gradient
-                  background: "linear-gradient(135deg,#2563EB,#0EA5E9)",
-
-                  transform: "translateX(-100%)",
-                  transition: "all 0.4s ease",
-                  zIndex: 0,
-                }}
-              ></span>
-
-              {/* Button Text */}
-              <span style={{ position: "relative", zIndex: 1 }}>
-                Sign in with Outlook →
-              </span>
-            </button>
-
-
-
-
-
-          </div>
-        </div>
-
-        {/* ✅ Right Flashcard Image Animation */}
-        <div
-          style={{
-            width: "520px",
-            height: "360px",
-            borderRadius: 24,
-            overflow: "hidden",
-            position: "relative",
-            boxShadow: "0 20px 60px rgba(0,0,0,0.25)",
-          }}
-        >
-          <img
-            key={currentSlide}
-            src={slides[currentSlide]}
-            alt="slide"
-            style={{
-              width: "100%",
-              height: "100%",
-              objectFit: "cover",
-              position: "absolute",
-              animation: "fadeSlide 3.5s ease-in-out",
-
-            }}
-          />
-        </div>
-
-        {/* ✅ Animation CSS */}
-        <style>
-          {`
-    @keyframes fadeSlide {
-      0% {
-        opacity: 0;
-        transform: scale(0.98);
-      }
-      20% {
-        opacity: 1;
-        transform: scale(1);
-      }
-      80% {
-        opacity: 1;
-        transform: scale(1);
-      }
-      100% {
-        opacity: 0;
-        transform: scale(1.02);
-      }
-    }
-  `}
-        </style>
-
-      </div>
+      <main className="min-h-screen">
+        <ScassiHero3D />
+        <Header />
+        <Footer />
+      </main>
     );
   }
 
+  // ── RENDER: Just logged in → mail loading animation ──
+  if (appView === "loading") {
+    return <MailLoadingScreen onDone={handleLoadingDone} />;
+  }
+
+  // ── RENDER: Logged in but haven't navigated yet → Scasi inbox dashboard ──
+  if (appView === "mailmind") {
+    return <MailMindDashboard onNavigate={handleMailMindNavigate} />;
+  }
+
+  // ── RENDER: User clicked a nav item → full inbox ──
+
   // ✅ FIX 3: Proper filtering with BOTH activeTab AND activeFolder
   const filteredEmails = emails.filter((mail) => {
-    // Folder filtering first
     if (activeFolder === "starred") return starredIds.includes(mail.id);
     if (activeFolder === "snoozed") return snoozedIds.includes(mail.id);
     if (activeFolder === "done") return doneIds.includes(mail.id);
     if (activeFolder === "drafts")
       return mail.label?.includes("DRAFT");
-
-
-    // Inbox normal view hides snoozed/done
     if (activeFolder === "inbox") {
       if (snoozedIds.includes(mail.id)) return false;
       if (doneIds.includes(mail.id)) return false;
@@ -1249,1332 +1092,751 @@ export default function Home() {
     // 🔍 SEARCH FILTER (ADD HERE)
     if (searchQuery.trim() !== "") {
       const query = searchQuery.toLowerCase();
-
       const subjectMatch = mail.subject?.toLowerCase().includes(query);
       const snippetMatch = mail.snippet?.toLowerCase().includes(query);
       const fromMatch = mail.from?.toLowerCase().includes(query);
-
       if (!subjectMatch && !snippetMatch && !fromMatch) {
         return false;
       }
     }
-
-
-    // Tab category filtering
     if (activeTab === "All Mails") return true;
-
     return getEmailCategory(mail) === activeTab;
   });
 
-
-
   const burnout = getBurnoutStats(filteredEmails);
 
-  if (session && showSplash) {
-    return <SplashScreen />;
-  }
+  // ── SVG ICON SET (all inline, no external deps) ────────────────
+  const Ico = {
+    Inbox: () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12" /><path d="M5.45 5.11L2 12v6a2 2 0 002 2h16a2 2 0 002-2v-6l-3.45-6.89A2 2 0 0016.76 4H7.24a2 2 0 00-1.79 1.11z" /></svg>,
+    Star: () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></svg>,
+    Clock: () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>,
+    Check: () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>,
+    Send: () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" /></svg>,
+    File: () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>,
+    Archive: () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="21 8 21 21 3 21 3 8" /><rect x="1" y="3" width="22" height="5" /><line x1="10" y1="12" x2="14" y2="12" /></svg>,
+    Alert: () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" /></svg>,
+    Trash: () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a1 1 0 011-1h4a1 1 0 011 1v2" /></svg>,
+    Edit: () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>,
+    Back: () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12" /><polyline points="12 19 5 12 12 5" /></svg>,
+    Sparkle: () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5L12 3z" /></svg>,
+    Zap: () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" /></svg>,
+    Menu: () => <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="12" x2="21" y2="12" /><line x1="3" y1="18" x2="21" y2="18" /></svg>,
+    Search: () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>,
+    Bell: () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 01-3.46 0" /></svg>,
+    Refresh: () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10" /></svg>,
+    Copy: () => <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" /></svg>,
+    Link: () => <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71" /></svg>,
+    Eye: () => <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></svg>,
+    Download: () => <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>,
+    SignOut: () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></svg>,
+    Fire: () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0011 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 01-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 002.5 2.5z" /></svg>,
+    Info: () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>,
+    Attach: () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" /></svg>,
+  };
 
+  // ── SIDEBAR CONFIG ─────────────────────────────────────────────
+  const mailNav = [
+    { key: "inbox", label: "Inbox", icon: <Ico.Inbox />, count: newMailCount },
+    { key: "starred", label: "Starred", icon: <Ico.Star /> },
+    { key: "snoozed", label: "Snoozed", icon: <Ico.Clock /> },
+    { key: "done", label: "Done", icon: <Ico.Check /> },
+    { key: "sent", label: "Sent", icon: <Ico.Send /> },
+    { key: "drafts", label: "Drafts", icon: <Ico.File /> },
+    { key: "archive", label: "Archive", icon: <Ico.Archive /> },
+    { key: "spam", label: "Spam", icon: <Ico.Alert /> },
+    { key: "trash", label: "Trash", icon: <Ico.Trash /> },
+  ];
+
+  const categoryNav = [
+    { key: "All Mails", color: "#7C3AED", bg: "#F5F3FF" },
+    { key: "Do Now", color: "#DC2626", bg: "#FEF2F2" },
+    { key: "Needs Decision", color: "#D97706", bg: "#FFFBEB" },
+    { key: "Waiting", color: "#2563EB", bg: "#EFF6FF" },
+    { key: "Low Energy", color: "#059669", bg: "#F0FDF4" },
+  ];
+
+  // ─────────────────────────────────────────────────────────────
   return (
-    <div className="h-screen flex flex-col">
-      {/* ✅ Glass Outer Frame */}
-      <div className="flex flex-col h-full m-4 rounded-3xl bg-white/40 backdrop-blur-2xl border border-white/30 shadow-xl overflow-hidden">
+    <>
+      {/* ── GLOBAL STYLES ── */}
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Syne:wght@600;700;800&display=swap');
 
-        {/* Premium Header with Gradient */}
-        {/* ✅ TOP NAVBAR (Exact Reference Style) */}
-        <div
-          className="
-               h-16 px-6 flex items-center justify-between
-                bg-gradient-to-r from-[#3b4ba3] to-[#5876d6]
-                text-white shadow-md"
-        >
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body { height: 100%; overflow: hidden; }
+        body { font-family: 'DM Sans', sans-serif; background: #FAF8FF; color: #18103A; font-size: 12.5px; line-height: 1.5; }
 
+        ::-webkit-scrollbar { width: 4px; height: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #C4B5FD; border-radius: 99px; }
+        ::-webkit-scrollbar-thumb:hover { background: #A78BFA; }
 
+        /* ─ sidebar ─ */
+        .sb { background: #170A35; height: 100%; display: flex; flex-direction: column; overflow: hidden; transition: width .22s cubic-bezier(.4,0,.2,1), min-width .22s cubic-bezier(.4,0,.2,1); border-right: 1px solid rgba(196,181,253,.08); }
+        .sb-lbl { font-size: 9px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: rgba(167,139,250,.4); padding: 12px 14px 4px; white-space: nowrap; overflow: hidden; }
+        .sb-item { display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 7px; margin: 1px 6px; cursor: pointer; font-size: 12px; font-weight: 500; color: #C4B5FD; white-space: nowrap; overflow: hidden; transition: background .14s, color .14s; position: relative; }
+        .sb-item:hover { background: rgba(167,139,250,.12); color: #EDE9FE; }
+        .sb-item.on { background: rgba(167,139,250,.18); color: #F5F3FF; font-weight: 600; }
+        .sb-item.on::before { content:''; position: absolute; left: 0; top: 22%; bottom: 22%; width: 2px; background: #A78BFA; border-radius: 0 2px 2px 0; }
+        .sb-item svg { flex-shrink: 0; opacity: .75; }
+        .sb-badge { margin-left: auto; background: #7C3AED; color: #fff; border-radius: 99px; font-size: 8.5px; font-weight: 800; min-width: 15px; height: 15px; padding: 0 3px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 
-          {/* Left: Logo + Menu */}
-          <div className="flex items-center gap-4">
-            <button
-              onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="text-2xl hover:opacity-80"
-            >
-              ☰
-            </button>
+        /* ─ topbar ─ */
+        .topbar { height: 50px; background: #fff; border-bottom: 1px solid #EDE9FE; display: flex; align-items: center; gap: 8px; padding: 0 14px; flex-shrink: 0; position: fixed; top: 0; left: 0; right: 0; z-index: 1000; box-shadow: 0 1px 0 #EDE9FE; }
 
-            <h1 className="text-xl font-bold tracking-wide">
-              MailMind
-            </h1>
-          </div>
+        /* ─ search ─ */
+        .srch { flex: 1; max-width: 380px; position: relative; }
+        .srch input { width: 100%; padding: 6px 10px 6px 28px; border-radius: 7px; border: 1px solid #E2D9F3; background: #FAF8FF; font-size: 12px; font-family: 'DM Sans', sans-serif; color: #18103A; outline: none; transition: border .14s; }
+        .srch input:focus { border-color: #A78BFA; box-shadow: 0 0 0 2.5px rgba(167,139,250,.18); }
+        .srch-ic { position: absolute; left: 9px; top: 50%; transform: translateY(-50%); color: #A78BFA; pointer-events: none; display: flex; }
 
+        /* ─ buttons ─ */
+        .btn { display: inline-flex; align-items: center; gap: 5px; padding: 5px 9px; border-radius: 7px; border: 1px solid #E2D9F3; background: #fff; color: #4C1D95; font-size: 11px; font-weight: 600; font-family: 'DM Sans', sans-serif; cursor: pointer; transition: all .14s; white-space: nowrap; line-height: 1; }
+        .btn:hover { background: #F5F3FF; border-color: #C4B5FD; color: #7C3AED; }
+        .btn.pri { background: #7C3AED; border-color: #7C3AED; color: #fff; box-shadow: 0 2px 7px rgba(124,58,237,.28); }
+        .btn.pri:hover { background: #5B21B6; border-color: #5B21B6; }
+        .btn.red { background: #FEF2F2; border-color: #FECACA; color: #DC2626; }
+        .btn.red:hover { background: #FEE2E2; }
+        .btn.grn { background: #F0FDF4; border-color: #BBF7D0; color: #059669; }
+        .btn.grn:hover { background: #DCFCE7; }
+        .btn.amb { background: #FFFBEB; border-color: #FDE68A; color: #D97706; }
+        .btn.amb:hover { background: #FEF3C7; }
+        .btn.ghost { background: transparent; border-color: transparent; }
+        .btn.ghost:hover { background: #F5F3FF; border-color: #EDE9FE; }
 
-          {/* 🔍 Search Bar */}
-          <div className="hidden md:flex items-center bg-white/20 px-4 py-2 rounded-xl w-[320px]">
-            <input
-              type="text"
-              placeholder="Search mails..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="bg-transparent outline-none text-white placeholder-white/70 w-full text-sm"
-            />
-          </div>
+        /* ─ ai button ─ */
+        .ai-btn { display: inline-flex; align-items: center; gap: 5px; padding: 6px 12px; border-radius: 7px; border: none; background: linear-gradient(135deg,#7C3AED 0%,#8B5CF6 100%); color: #fff; font-size: 11.5px; font-weight: 700; font-family: 'DM Sans', sans-serif; cursor: pointer; box-shadow: 0 2px 9px rgba(124,58,237,.28); transition: all .17s; }
+        .ai-btn:hover { transform: translateY(-1px); box-shadow: 0 4px 13px rgba(124,58,237,.36); }
+        .ai-btn:active { transform: none; }
+        .ai-btn.sm { padding: 4px 9px; font-size: 10.5px; }
 
-          {/* Right: Icons */}
-          <div className="flex items-center gap-4">
-            {/* Notification */}
-            <div style={{ position: "relative" }}>
-              {/* 🔔 Bell Button */}
-              <button
-                onClick={() => setShowNotifications(!showNotifications)}
-                className="relative text-xl hover:opacity-80"
-              >
-                🔔
+        /* ─ cards ─ */
+        .card { background: #fff; border: 1px solid #EDE9FE; border-radius: 10px; padding: 12px 14px; }
+        .card-pu { background: linear-gradient(135deg,#F5F3FF 0%,#EDE9FE 100%); border: 1px solid #DDD6FE; border-radius: 10px; padding: 12px 14px; }
+        .card-ttl { font-size: 11px; font-weight: 700; color: #4C1D95; margin-bottom: 9px; display: flex; align-items: center; gap: 5px; letter-spacing: .01em; }
 
-                {/* Badge Count */}
-                {newMailCount > 0 && (
-                  <span
-                    style={{
-                      position: "absolute",
-                      top: "-6px",
-                      right: "-6px",
-                      background: "red",
-                      color: "white",
-                      fontSize: "11px",
-                      fontWeight: "700",
-                      padding: "3px 7px",
-                      borderRadius: "999px",
-                    }}
-                  >
-                    {newMailCount}
-                  </span>
-                )}
-              </button>
+        /* ─ mail row ─ */
+        .mail-row { padding: 8px 12px; border-bottom: 1px solid #F3F0FF; cursor: pointer; transition: background .1s; display: flex; align-items: flex-start; gap: 8px; }
+        .mail-row:hover { background: #FAF8FF; }
+        .mail-row.sel { background: #F0EBFF; border-left: 2.5px solid #7C3AED; }
+        .mail-row:not(.sel) { border-left: 2.5px solid transparent; }
 
-              {/* 🔥 Notification Dropdown */}
-              {showNotifications && (
-                <div
-                  style={{
-                    position: "absolute",
-                    top: "55px",
-                    right: 0,
-                    width: "320px",
-                    background: "rgba(255,255,255,0.95)",
-                    backdropFilter: "blur(20px)",
-                    borderRadius: "18px",
-                    boxShadow: "0 12px 40px rgba(0,0,0,0.18)",
-                    border: "1px solid rgba(255,255,255,0.4)",
-                    zIndex: 9999,
-                    padding: "16px",
-                  }}
-                >
-                  <h3 style={{ fontWeight: 700, marginBottom: 12 }}>
-                    🔔 New Emails
-                  </h3>
+        /* ─ pill ─ */
+        .pill { display: inline-flex; align-items: center; padding: 1.5px 6px; border-radius: 99px; font-size: 9.5px; font-weight: 700; }
 
-                  {/* If no new mails */}
-                  {newMails.length === 0 && (
-                    <p style={{ fontSize: 13, color: "#666" }}>
-                      No new notifications 🎉
-                    </p>
-                  )}
+        /* ─ inputs ─ */
+        .inp { width: 100%; padding: 7px 10px; border-radius: 7px; border: 1px solid #E2D9F3; background: #FAF8FF; font-size: 12px; font-family: 'DM Sans', sans-serif; color: #18103A; outline: none; transition: border .14s; }
+        .inp:focus { border-color: #A78BFA; box-shadow: 0 0 0 2.5px rgba(167,139,250,.14); }
 
-                  {/* Show new mails */}
-                  {newMails.slice(0, 5).map((mail) => (
-                    <div
-                      key={mail.id}
-                      style={{
-                        padding: "10px",
-                        borderRadius: "12px",
-                        marginBottom: "8px",
-                        background: "#F3F4F6",
-                        cursor: "pointer",
-                      }}
-                      onClick={() => {
-                        openMailAndGenerateAI(mail.id, mail);
-                        setShowNotifications(false);
-                      }}
-                    >
-                      <p style={{ fontWeight: 700, fontSize: 13 }}>
-                        {mail.subject}
-                      </p>
-                      <p style={{ fontSize: 12, color: "#555" }}>
-                        {mail.snippet?.substring(0, 50)}...
-                      </p>
-                    </div>
-                  ))}
+        /* ─ overlay + modal ─ */
+        .overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(15,4,44,.65); backdrop-filter: blur(7px); display: flex; justify-content: center; align-items: center; z-index: 99999; }
+        .modal { background: #fff; border-radius: 14px; padding: 20px 22px; box-shadow: 0 18px 52px rgba(124,58,237,.22); border: 1px solid #DDD6FE; width: 460px; max-width: 94vw; }
+        .modal-ttl { font-family: 'Syne', sans-serif; font-size: 14px; font-weight: 800; color: #18103A; margin-bottom: 12px; }
 
-                  {/* Mark All Seen Button */}
-                  {newMailCount > 0 && (
-                    <button
-                      onClick={() => {
-                        // Reset count only when user clicks
-                        setNewMailCount(0);
-                        setNewMails([]);
-                        localStorage.setItem(
-                          "lastSeenTime",
-                          new Date().toISOString()
-                        );
-                        setShowNotifications(false);
-                      }}
-                      style={{
-                        marginTop: 10,
-                        width: "100%",
-                        padding: "10px",
-                        borderRadius: "12px",
-                        border: "none",
-                        background: "linear-gradient(135deg,#2563EB,#0EA5E9)",
-                        color: "white",
-                        fontWeight: 700,
-                        cursor: "pointer",
-                      }}
-                    >
-                      Mark all as seen ✅
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
+        /* ─ notif dropdown ─ */
+        .notif-dd { position: absolute; right: 0; top: 38px; width: 280px; background: #fff; border: 1px solid #DDD6FE; border-radius: 11px; box-shadow: 0 9px 28px rgba(124,58,237,.14); z-index: 9999; padding: 9px; }
 
+        /* ─ priority bar ─ */
+        .pbar { height: 2.5px; border-radius: 99px; background: #EDE9FE; overflow: hidden; }
+        .pbar-fill { height: 100%; border-radius: 99px; }
 
+        /* ─ animations ─ */
+        @keyframes sl { from { opacity:0; transform:translateY(5px); } to { opacity:1; transform:translateY(0); } }
+        .anim { animation: sl .18s ease forwards; }
+        @keyframes pu { 0%,100% { opacity:1; } 50% { opacity:.3; } }
+        .pulse { animation: pu 2.2s infinite; }
 
+        /* ─ detail heading ─ */
+        .d-hd { font-size: 10px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: #A78BFA; margin-bottom: 7px; }
 
-            {/* ✅ PROFILE DROPDOWN */}
-            <div style={{ position: "relative" }}>
+        /* ─ category filter strip ─ */
+        .cat-strip { display: flex; gap: 4px; padding: 0 12px 8px; overflow-x: auto; flex-wrap: nowrap; }
+        .cat-strip::-webkit-scrollbar { height: 0; }
+      `}</style>
 
-              {/* Profile Circle */}
-              <div
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowProfile(!showProfile);
-                }}
-                style={{
-                  width: 42,
-                  height: 42,
-                  borderRadius: "50%",
-                  background: "rgba(255,255,255,0.25)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontWeight: 700,
-                  cursor: "pointer",
-                }}
-              >
-                {session.user?.email?.[0].toUpperCase()}
+      {/* ══════════════════════════════════════════════════
+          TOP NAV BAR
+      ══════════════════════════════════════════════════ */}
+      <div className="topbar">
+        {/* hamburger + logo */}
+        <button className="btn ghost" style={{ padding: "4px 5px" }} onClick={() => setSidebarOpen(v => !v)}>
+          <Ico.Menu />
+        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, marginRight: 6 }}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+            <rect width="24" height="24" rx="5" fill="#7C3AED" />
+            <path d="M4 8l8 5 8-5" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" />
+            <rect x="4" y="7" width="16" height="11" rx="2" stroke="#fff" strokeWidth="1.5" fill="none" />
+          </svg>
+          <span style={{ fontFamily: "'Syne',sans-serif", fontWeight: 800, fontSize: 13, color: "#18103A", letterSpacing: "-.3px" }}>
+            Scasi inbox
+          </span>
+        </div>
+
+        {/* search */}
+        <div className="srch">
+          <span className="srch-ic"><Ico.Search /></span>
+          <input
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            placeholder="Search emails, contacts, AI actions…"
+          />
+        </div>
+
+        <div style={{ flex: 1 }} />
+
+        <button className="btn" onClick={refreshInbox}><Ico.Refresh /> Refresh</button>
+
+        {/* notifications */}
+        <div style={{ position: "relative" }}>
+          <button className="btn" onClick={() => setShowNotifications(v => !v)} style={{ padding: "5px 7px", position: "relative" }}>
+            <Ico.Bell />
+            {newMailCount > 0 && (
+              <span style={{
+                position: "absolute", top: -3, right: -3,
+                background: "#7C3AED", color: "#fff", borderRadius: "50%",
+                width: 13, height: 13, fontSize: 7.5, fontWeight: 900,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                border: "1.5px solid #fff",
+              }}>
+                {newMailCount}
+              </span>
+            )}
+          </button>
+          {showNotifications && (
+            <div className="notif-dd anim">
+              <div style={{ fontSize: 9.5, fontWeight: 800, color: "#A78BFA", letterSpacing: ".07em", textTransform: "uppercase", marginBottom: 7, padding: "0 3px" }}>
+                New Messages
               </div>
-
-              {/* Dropdown Card */}
-              {showProfile && (
-                <div
-                  onClick={(e) => e.stopPropagation()}
-                  style={{
-                    position: "absolute",
-                    top: "55px",
-                    right: 0,
-                    width: "260px",
-                    background: "rgba(255,255,255,0.92)",
-                    backdropFilter: "blur(20px)",
-                    borderRadius: "18px",
-                    padding: "18px",
-                    boxShadow: "0 12px 40px rgba(0,0,0,0.18)",
-                    border: "1px solid rgba(255,255,255,0.4)",
-                    zIndex: 9999,
-                  }}
-                >
-                  {/* Gmail Email */}
-                  <p style={{ fontWeight: 700, fontSize: 14, marginBottom: 6 }}>
-                    Signed in as
-                  </p>
-
-                  <p
-                    style={{
-                      fontSize: 13,
-                      color: "#444",
-                      marginBottom: 14,
-                      wordBreak: "break-word",
-                    }}
-                  >
-                    {session.user?.email}
-                  </p>
-
-                  {/* Divider */}
-                  <div
-                    style={{
-                      height: 1,
-                      background: "#E5E7EB",
-                      marginBottom: 12,
-                    }}
-                  />
-
-                  {/* Logout */}
-                  <button
-                    onClick={() => signOut()}
-                    style={{
-                      width: "100%",
-                      padding: "10px",
-                      borderRadius: "12px",
-                      border: "none",
-                      background: "linear-gradient(135deg,#EF4444,#DC2626)",
-                      color: "white",
-                      fontWeight: 600,
-                      cursor: "pointer",
-                    }}
-                  >
-                    Logout
-                  </button>
+              {newMails.length === 0 ? (
+                <div style={{ padding: "9px 3px", color: "#A78BFA", fontSize: 11.5, textAlign: "center" }}>
+                  All caught up ✨
                 </div>
+              ) : newMails.slice(0, 6).map((m, i) => (
+                <div
+                  key={i}
+                  onClick={() => { openMailAndGenerateAI(m.id, m); setShowNotifications(false); setNewMailCount(0); setNewMails([]); }}
+                  style={{ padding: "6px 7px", borderRadius: 6, cursor: "pointer", marginBottom: 2 }}
+                  onMouseOver={e => (e.currentTarget.style.background = "#F5F3FF")}
+                  onMouseOut={e => (e.currentTarget.style.background = "transparent")}
+                >
+                  <div style={{ fontSize: 11.5, fontWeight: 600, color: "#18103A", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.subject}</div>
+                  <div style={{ fontSize: 10.5, color: "#A78BFA", marginTop: 1 }}>{m.from?.split("<")[0]?.trim()}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <button className="btn" onClick={() => setAppView("mailmind")} style={{ background: "#F5F3FF", borderColor: "#DDD6FE" }}>
+          <Ico.Back /> Dashboard
+        </button>
+
+        <button className="ai-btn sm" onClick={() => setShowCompose(true)}>
+          <Ico.Edit /> Compose
+        </button>
+
+        {/* avatar */}
+        <div
+          style={{
+            width: 28, height: 28, borderRadius: "50%",
+            background: "linear-gradient(135deg,#7C3AED,#A78BFA)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            color: "#fff", fontWeight: 800, fontSize: 10.5, cursor: "pointer",
+            flexShrink: 0, border: "2px solid #DDD6FE",
+          }}
+        >
+          {session?.user?.name?.[0]?.toUpperCase() || "U"}
+        </div>
+      </div>
+
+      {/* ══════════════════════════════════════════════════
+          MAIN LAYOUT  (offset 50px for fixed topbar)
+      ══════════════════════════════════════════════════ */}
+      <div style={{ display: "flex", height: "100vh", paddingTop: 50, overflow: "hidden" }}>
+
+        {/* ══ LEFT SIDEBAR ══ */}
+        <div
+          className="sb"
+          style={{ width: sidebarOpen ? 200 : 0, minWidth: sidebarOpen ? 200 : 0 }}
+        >
+          {/* compose */}
+          <div style={{ padding: "10px 8px 6px" }}>
+            <button
+              onClick={() => { setShowCompose(true); setSidebarOpen(false); }}
+              style={{
+                width: "100%", padding: "8px 12px", borderRadius: 8, border: "none",
+                background: "linear-gradient(135deg,#7C3AED,#8B5CF6)",
+                color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 12,
+                fontFamily: "'DM Sans',sans-serif",
+                display: "flex", alignItems: "center", gap: 6, justifyContent: "center",
+                boxShadow: "0 3px 10px rgba(124,58,237,.35)", whiteSpace: "nowrap",
+              }}
+            >
+              <Ico.Edit /> Compose Mail
+            </button>
+          </div>
+
+          <div className="sb-lbl">Mail</div>
+          {mailNav.map(item => (
+            <div
+              key={item.key}
+              className={`sb-item${activeFolder === item.key ? " on" : ""}`}
+              onClick={() => { setActiveFolder(item.key); setSidebarOpen(false); }}
+            >
+              {item.icon}
+              <span style={{ flex: 1 }}>{item.label}</span>
+              {item.key === "inbox" && newMailCount > 0 && (
+                <span className="sb-badge">{newMailCount}</span>
               )}
             </div>
+          ))}
 
+          <div className="sb-lbl" style={{ marginTop: 5 }}>Categories</div>
+          {categoryNav.map(cat => (
+            <div
+              key={cat.key}
+              className={`sb-item${activeTab === cat.key ? " on" : ""}`}
+              onClick={() => { setActiveTab(cat.key); setSidebarOpen(false); }}
+            >
+              <span style={{ width: 7, height: 7, borderRadius: "50%", background: cat.color, flexShrink: 0, display: "inline-block" }} />
+              <span style={{ flex: 1 }}>{cat.key}</span>
+            </div>
+          ))}
 
+          <div className="sb-lbl" style={{ marginTop: 5 }}>AI Features</div>
+          <div className="sb-item"><Ico.Zap /><span style={{ flex: 1 }}>Priority Scoring</span><span className="pulse" style={{ width: 5, height: 5, borderRadius: "50%", background: "#A78BFA", flexShrink: 0, display: "inline-block" }} /></div>
+          <div className="sb-item"><Ico.Sparkle /><span style={{ flex: 1 }}>Smart Reply</span><span className="pulse" style={{ width: 5, height: 5, borderRadius: "50%", background: "#A78BFA", flexShrink: 0, display: "inline-block" }} /></div>
+          <div className="sb-item"><Ico.Fire /><span style={{ flex: 1 }}>Burnout Score</span><span className="pulse" style={{ width: 5, height: 5, borderRadius: "50%", background: "#A78BFA", flexShrink: 0, display: "inline-block" }} /></div>
+
+          <div style={{ flex: 1 }} />
+          <div style={{ padding: "6px 8px 10px", borderTop: "1px solid rgba(196,181,253,.09)" }}>
+            <div className="sb-item" onClick={() => signOut()} style={{ color: "rgba(196,181,253,.55)" }}>
+              <Ico.SignOut /><span>Sign out</span>
+            </div>
           </div>
         </div>
 
+        {/* ══ CENTRE: list + detail ══ */}
+        <div style={{ flex: 1, display: "flex", overflow: "hidden", background: "#FAF8FF" }}>
 
-        {/* ✅ FIX 2: Sidebar as Fixed Overlay (OUTSIDE email list) */}
-        {sidebarOpen && (
-          <div
-            style={{
-              position: "fixed",
-              top: 80,
-              left: 0,
-              width: 240,
-              height: "calc(100vh - 80px)",
-              background: "white",
-              borderRight: "1px solid #E5E7EB",
-              padding: 16,
-              zIndex: 9999,
-              boxShadow: "4px 0px 20px rgba(0,0,0,0.15)",
-              overflowY: "auto",
-            }}
-          >
-            <h3 style={{ fontSize: 14, marginBottom: 12, fontWeight: 700, color: "#111827" }}>📌 Dashboard</h3>
-            {/* ✍ Compose Button */}
-            <button
-              onClick={() => {
-                setShowCompose(true);
-                setSidebarOpen(false);
-              }}
-              style={{
-                width: "100%",
-                padding: "12px",
-                borderRadius: 12,
-                border: "none",
-                marginTop: 14,
-                background: "linear-gradient(135deg,#2563EB,#0EA5E9)",
-                color: "white",
-                fontWeight: 700,
-                cursor: "pointer",
-              }}
-            >
-              ✍ Compose Mail
-            </button>
+          {/* ════ EMAIL LIST ════ */}
+          <div style={{
+            width: 280, minWidth: 220, flexShrink: 0,
+            borderRight: "1px solid #EDE9FE",
+            display: "flex", flexDirection: "column",
+            background: "#fff", overflow: "hidden",
+          }}>
 
-            {/* 📝 Drafts Button */}
-            <button
-              onClick={() => {
-                setActiveFolder("drafts");
-                setSidebarOpen(false);
-              }}
-              style={{
-                width: "100%",
-                padding: "12px",
-                borderRadius: 12,
-                border: "1px solid #E5E7EB",
-                marginTop: 10,
-                background: "white",
-                fontWeight: 700,
-                cursor: "pointer",
-              }}
-            >
-              📝 Drafts
-            </button>
-
-
-            {[
-              { key: "inbox", label: "📥 Inbox" },
-              { key: "starred", label: "⭐ Starred" },
-
-            ].map((item) => (
-              <div
-                key={item.key}
-                onClick={() => {
-                  setActiveFolder(item.key);
-                  setSidebarOpen(false);
-                }}
-                style={{
-                  padding: "10px 12px",
-                  borderRadius: 10,
-                  cursor: "pointer",
-                  fontWeight: 600,
-                  marginBottom: 8,
-                  background:
-                    activeFolder === item.key ? "#DBEAFE" : "transparent",
-                  transition: "all 0.2s ease",
-                }}
-                onMouseOver={(e) => {
-                  if (activeFolder !== item.key) {
-                    e.currentTarget.style.background = "#F3F4F6";
-                  }
-                }}
-                onMouseOut={(e) => {
-                  if (activeFolder !== item.key) {
-                    e.currentTarget.style.background = "transparent";
-                  }
-                }}
-              >
-                {item.label}
+            {/* list header */}
+            <div style={{ padding: "9px 12px 0", borderBottom: "1px solid #EDE9FE", background: "#fff" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 7 }}>
+                <span style={{ fontFamily: "'Syne',sans-serif", fontWeight: 700, fontSize: 12.5, color: "#18103A", textTransform: "capitalize" }}>
+                  {activeFolder}
+                </span>
+                <span style={{ fontSize: 10, color: "#A78BFA", fontWeight: 600 }}>{filteredEmails.length} msgs</span>
               </div>
-
-            ))}
-            {[
-
-              { key: "snoozed", label: "⏳ Snoozed" },
-              { key: "done", label: "✅ Done" },
-            ].map((item) => (
-              <div
-                key={item.key}
-                onClick={() => {
-                  setActiveFolder(item.key);
-                  setSidebarOpen(false);
-                }}
-                style={{
-                  padding: "10px 12px",
-                  borderRadius: 10,
-                  cursor: "pointer",
-                  fontWeight: 600,
-                  marginBottom: 8,
-                  background:
-                    activeFolder === item.key ? "#DBEAFE" : "transparent",
-                }}
-              >
-                {item.label}
-              </div>
-            ))}
-
-            {/* ✅ PASTE CATEGORY SECTION EXACTLY HERE */}
-            <hr style={{ margin: "16px 0", borderColor: "#E5E7EB" }} />
-
-            <div style={{ marginTop: 10 }}>
-
-              <h3
-                style={{
-                  fontSize: 13,
-                  marginBottom: 10,
-                  fontWeight: 700,
-                  color: "#111827",
-                }}
-              >
-                📌 Categories
-              </h3>
-
-              {["All Mails", "Do Now", "Waiting", "Needs Decision", "Low Energy"].map(
-                (tab) => (
-                  <div
-                    key={tab}
-                    onClick={() => {
-                      setActiveTab(tab);
-                      setSidebarOpen(false);
-                    }}
+              {/* category filter pills */}
+              <div className="cat-strip" style={{ paddingLeft: 0, paddingRight: 0, marginBottom: 0 }}>
+                {categoryNav.map(cat => (
+                  <button
+                    key={cat.key}
+                    onClick={() => setActiveTab(cat.key)}
                     style={{
-                      padding: "10px 12px",
-                      borderRadius: 10,
-                      cursor: "pointer",
-                      fontWeight: 600,
-                      marginBottom: 8,
-                      background:
-                        activeTab === tab ? "#EDE9FE" : "transparent",
-                      color:
-                        activeTab === tab ? "#6D28D9" : "#111827",
+                      padding: "2.5px 7px", borderRadius: 99, border: "none",
+                      background: activeTab === cat.key ? cat.color : cat.bg,
+                      color: activeTab === cat.key ? "#fff" : cat.color,
+                      fontWeight: 700, fontSize: 9.5, cursor: "pointer",
+                      fontFamily: "'DM Sans',sans-serif", whiteSpace: "nowrap",
+                      transition: "all .13s", flexShrink: 0,
                     }}
                   >
-                    {tab}
-                  </div>
-                )
-              )}
+                    {cat.key}
+                  </button>
+                ))}
+              </div>
             </div>
 
+            {/* email rows */}
+            <div style={{ flex: 1, overflowY: "auto" }}>
+              {filteredEmails.length === 0 && (
+                <div style={{ padding: 20, textAlign: "center", color: "#C4B5FD", fontSize: 11.5 }}>
+                  No emails to display
+                </div>
+              )}
+              {filteredEmails.map((mail, index) => {
+                const cat = getEmailCategory(mail);
+                const catColor = getCategoryColor(cat);
+                const catBg = getCategoryBg(cat);
+                const score = getPriorityScore(mail);
+                const scoreColor = getPriorityColor(score);
+                const isSelected = selectedMail?.id === mail.id;
+                const isSpam = isSpamEmail(mail);
+                const isNew = isFirstTimeSender(mail, emails);
+                const initials = getInitials(mail.from || "");
 
-            {/* Close Button */}
-            <button
-              onClick={() => setSidebarOpen(false)}
-              style={{
-                marginTop: 20,
-                width: "100%",
-                padding: "10px",
-                borderRadius: 10,
-                border: "none",
-                background: "#EF4444",
-                color: "white",
-                cursor: "pointer",
-                fontWeight: 700,
-              }}
-            >
-              Close Menu
-            </button>
-          </div>
-        )}
-
-        <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
-          {/* Email List Sidebar - ✅ PREMIUM COMPACT DESIGN */}
-          <div
-            style={{
-              width: "35%",
-              borderRight: "1px solid #E5E7EB",
-              overflowY: "auto",
-              background: "#F8FAFF",
-            }}
-          >
-
-
-            {/* ✅ PREMIUM COMPACT EMAIL CARDS */}
-            {filteredEmails.map((mail, index) => {
-              const score = getPriorityScore(mail);
-              const category = getEmailCategory(mail);
-
-
-
-              return (
-                <div
-                  key={mail.id + "_" + index}
-                  onClick={() => {
-                    openMailAndGenerateAI(mail.id, mail);
-                    generateAIPriorityForMail(mail);
-                  }}
-                  style={{
-                    padding: 14,
-                    marginBottom: 8,
-                    marginLeft: 12,
-                    marginRight: 12,
-                    cursor: "pointer",
-                    background: selectedMail?.id === mail.id
-                      ? "linear-gradient(135deg, rgba(109, 40, 217, 0.08) 0%, rgba(37, 99, 235, 0.08) 100%)"
-                      : "white",
-                    borderRadius: 12,
-                    border: selectedMail?.id === mail.id ? "2px solid #6D28D9" : "1px solid #E5E7EB",
-                    transition: "all 0.2s ease",
-                    boxShadow: selectedMail?.id === mail.id ? "0 4px 12px rgba(109, 40, 217, 0.15)" : "0 1px 3px rgba(0,0,0,0.05)",
-                  }}
-                  onMouseOver={(e) => {
-                    if (selectedMail?.id !== mail.id) {
-                      e.currentTarget.style.background = "white";
-                      e.currentTarget.style.boxShadow = "0 2px 8px rgba(0,0,0,0.08)";
-                    }
-                  }}
-                  onMouseOut={(e) => {
-                    if (selectedMail?.id !== mail.id) {
-                      e.currentTarget.style.background = "white";
-                      e.currentTarget.style.boxShadow = "0 1px 3px rgba(0,0,0,0.05)";
-                    }
-                  }}
-                >
-                  {/* ✅ TOP ROW: Avatar + Subject + Badges */}
-                  <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
-                    {/* ✅ AVATAR */}
-                    <div
-                      style={{
-                        width: 40,
-                        height: 40,
-                        borderRadius: 10,
-                        background: "linear-gradient(135deg, #111827 0%, #2563EB 100%)",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        color: "white",
-                        fontWeight: 700,
-                        fontSize: 14,
-                        flexShrink: 0,
-                        border: "2px solid white",
-                        boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
-                      }}
-                    >
-                      {getInitials(mail.from)}
-                    </div>
-
-                    {/* ✅ CONTENT AREA */}
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      {/* Subject */}
-                      <div style={{
-                        fontWeight: 700,
-                        color: "#111827",
-                        fontSize: 14,
-                        marginBottom: 4,
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap"
-                      }}>
-                        {mail.subject || "(No Subject)"}
-                      </div>
-
-                      {/* ✅ COMPACT SINGLE LINE SNIPPET */}
-                      <p
-                        style={{
-                          margin: 0,
-                          fontSize: 12,
-                          color: "#6B7280",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {mail.snippet}
-                      </p>
-
-                      {/* Date + Badges Row */}
-                      <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
-
-
-                        {/* Date */}
-                        <span style={{ fontSize: 11, color: "#9CA3AF" }}>
-                          {mail.date}
-                        </span>
-
-                        {/* First Time Sender Badge */}
-                        {isFirstTimeSender(mail, emails) && (
-                          <span
-                            style={{
-                              padding: "2px 8px",
-                              borderRadius: 8,
-                              fontSize: 10,
-                              fontWeight: 700,
-                              background: "linear-gradient(135deg, #0EA5E9 0%, #2563EB 100%)",
-                              color: "white",
-                            }}
-                          >
-                            🆕 New
-                          </span>
-                        )}
-
-                        {/* Spam Badge */}
-                        {isSpamEmail(mail) && (
-                          <span
-                            style={{
-                              backgroundColor: "#dc2626",
-                              color: "white",
-                              padding: "2px 8px",
-                              borderRadius: 8,
-                              fontSize: 10,
-                              fontWeight: 700,
-                            }}
-                          >
-                            🚫 SPAM
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* ✅ PRIORITY BADGE - COMPACT VERSION */}
+                return (
                   <div
-
-                    style={{
-                      display: "inline-block",
-                      padding: "4px 10px",
-                      borderRadius: "12px",
-                      fontSize: "11px",
-                      fontWeight: "bold",
-                      marginTop: "8px",
-                      background: `linear-gradient(135deg, ${getCategoryColor(category)}, #00000020)`,
-                      color: "white",
+                    key={mail.id + "_" + index}
+                    className={`mail-row${isSelected ? " sel" : ""}`}
+                    onClick={() => {
+                      openMailAndGenerateAI(mail.id, mail);
+                      generateAIPriorityForMail(mail);
                     }}
                   >
-                    {category} • {score}
-
-                  </div>
-
-                  {/* AI Priority Reason - Compact */}
-                  {aiPriorityMap[mail.id] && (
-                    <p style={{
-                      fontSize: 11,
-                      color: "#6B7280",
-                      marginTop: 4,
-                      marginBottom: 0,
-                      lineHeight: 1.4
+                    {/* avatar */}
+                    <div style={{
+                      width: 26, height: 26, borderRadius: "50%",
+                      background: `${catColor}18`,
+                      border: `1.5px solid ${catColor}40`,
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      flexShrink: 0, fontSize: 8.5, fontWeight: 800, color: catColor,
+                      marginTop: 1,
                     }}>
-                      {aiPriorityMap[mail.id].reason}
-                    </p>
-                  )}
-                </div>
-              );
-            })}
+                      {initials}
+                    </div>
 
-            {nextPageToken && (
-              <button
-                onClick={loadEmails}
-                disabled={loading}
-                style={{
-                  width: "calc(100% - 24px)",
-                  margin: "12px",
-                  padding: 12,
-                  background: loading ? "#E5E7EB" : "linear-gradient(135deg, #6D28D9 0%, #2563EB 100%)",
-                  color: "white",
-                  border: "none",
-                  borderRadius: 10,
-                  fontWeight: 600,
-                  cursor: loading ? "not-allowed" : "pointer",
-                  boxShadow: "0 2px 8px rgba(109, 40, 217, 0.2)",
-                }}
-              >
-                {loading ? "Loading..." : "Load More"}
-              </button>
-            )}
+                    {/* text */}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      {/* from + date */}
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 1.5 }}>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: "#18103A", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "68%" }}>
+                          {mail.from?.split("<")[0]?.trim() || mail.from}
+                        </span>
+                        <span style={{ fontSize: 9.5, color: "#A78BFA", flexShrink: 0 }}>
+                          {mail.date ? new Date(mail.date).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : ""}
+                        </span>
+                      </div>
+                      {/* subject */}
+                      <div style={{ fontSize: 11, fontWeight: 600, color: "#4C1D95", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginBottom: 2 }}>
+                        {mail.subject}
+                      </div>
+                      {/* snippet */}
+                      <div style={{ fontSize: 10.5, color: "#6D28D9", opacity: .55, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginBottom: 3.5 }}>
+                        {mail.snippet}
+                      </div>
+                      {/* tags + priority bar */}
+                      <div style={{ display: "flex", alignItems: "center", gap: 3, flexWrap: "nowrap" }}>
+                        <span className="pill" style={{ background: catBg, color: catColor }}>{cat}</span>
+                        {isSpam && <span className="pill" style={{ background: "#FEF2F2", color: "#DC2626" }}>Spam?</span>}
+                        {isNew && <span className="pill" style={{ background: "#EFF6FF", color: "#2563EB" }}>New</span>}
+                        {aiPriorityMap[mail.id] && (
+                          <span className="pill" style={{ background: "#F5F3FF", color: "#7C3AED" }}>
+                            AI·{aiPriorityMap[mail.id].score}
+                          </span>
+                        )}
+                        <div style={{ flex: 1, minWidth: 16 }}>
+                          <div className="pbar">
+                            <div className="pbar-fill" style={{ width: `${score}%`, background: scoreColor }} />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+
+              {nextPageToken && (
+                <div style={{ padding: "8px 10px" }}>
+                  <button
+                    onClick={loadEmails}
+                    disabled={loading}
+                    style={{
+                      width: "100%", padding: "7px 0", borderRadius: 7, border: "none",
+                      background: loading ? "#EDE9FE" : "linear-gradient(135deg,#7C3AED,#8B5CF6)",
+                      color: loading ? "#A78BFA" : "#fff",
+                      fontWeight: 700, fontSize: 11, cursor: loading ? "not-allowed" : "pointer",
+                      fontFamily: "'DM Sans',sans-serif",
+                    }}
+                  >
+                    {loading ? "Loading…" : "Load more"}
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
 
-          {/* Email Detail Panel */}
-          <div
-            style={{
-              flex: 1,
-              padding: 18,
-              background: "#F8FAFF",
-              overflowY: "scroll",
-            }}
-          >
+          {/* ════ EMAIL DETAIL ════ */}
+          <div style={{ flex: 1, overflowY: "auto", background: "#FAF8FF", padding: "14px 18px" }}>
             {!selectedMail ? (
-              <div style={{
-                textAlign: "center",
-                paddingTop: 60,
-                color: "#6B7280"
-              }}>
-                <h2 style={{ fontSize: 24, fontWeight: 700, color: "#111827" }}>
-                  📩 Select an email to view
-                </h2>
-                <p style={{ marginTop: 12 }}>Choose an email from the list to see details and AI insights</p>
+              <div style={{ height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10, paddingBottom: 60 }}>
+                <EmptyStateEnvelope />
+                <div style={{ textAlign: "center" }}>
+                  <div style={{ fontFamily: "'Syne',sans-serif", fontWeight: 700, fontSize: 14, color: "#18103A" }}>Select an email to read</div>
+                  <div style={{ fontSize: 11.5, color: "#A78BFA", marginTop: 3 }}>AI insights appear here automatically</div>
+                </div>
               </div>
             ) : (
               <Fragment>
-                {/* Email Header - ✅ STICKY WITH QUICK ACTIONS */}
-                <div style={{
-                  marginBottom: 24,
-                  padding: 12,
-                  background: "white",
-                  borderRadius: 16,
-                  boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
-                  border: "1px solid #E5E7EB",
-                }}>
-                  <h2 style={{ fontSize: 16, fontWeight: 100, color: "#111827", margin: 0 }}>
+
+                {/* ── EMAIL HEADER ── */}
+                <div className="card anim" style={{ marginBottom: 10 }}>
+                  <div style={{ fontFamily: "'Syne',sans-serif", fontWeight: 700, fontSize: 13.5, color: "#18103A", lineHeight: 1.4, marginBottom: 7 }}>
                     {selectedMail.subject}
-                  </h2>
-                  <p style={{ color: "#6B7280", marginTop: 12, marginBottom: 6 }}>
-                    <strong style={{ color: "#111827" }}>From:</strong> {selectedMail.from}
-                  </p>
-                  <p style={{ color: "#6B7280", margin: 0 }}>
-                    <strong style={{ color: "#111827" }}>Date:</strong> {selectedMail.date}
-                  </p>
-
-                  <div style={{
-                    display: "flex",
-                    gap: 10,
-                    marginTop: 12,
-                    alignItems: "center",
-                    flexWrap: "wrap"
-                  }}>
-
+                  </div>
+                  <div style={{ display: "flex", gap: 14, fontSize: 11, color: "#A78BFA", marginBottom: 9, flexWrap: "wrap" }}>
+                    <span><strong style={{ color: "#4C1D95", fontWeight: 600 }}>From</strong>&ensp;{selectedMail.from}</span>
+                    <span><strong style={{ color: "#4C1D95", fontWeight: 600 }}>Date</strong>&ensp;{selectedMail.date}</span>
+                  </div>
+                  {/* quick actions */}
+                  <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
                     <button
+                      className="btn amb"
                       onClick={toggleStar}
-                      style={{
-                        padding: "6px 10px",
-                        fontSize: 12,
-                        borderRadius: 8,
-                        border: "1px solid #ddd",
-                        cursor: "pointer",
-                        background: starredIds.includes(selectedMail.id)
-                          ? "#FEF9C3"
-                          : "white",
-                      }}
+                      style={{ background: starredIds.includes(selectedMail.id) ? "#FEF3C7" : undefined, borderColor: starredIds.includes(selectedMail.id) ? "#FCD34D" : undefined }}
                     >
-                      ⭐ Star
+                      <Ico.Star /> {starredIds.includes(selectedMail.id) ? "Starred" : "Star"}
                     </button>
-
-                    <button
-                      onClick={snoozeMail}
-                      style={{
-                        padding: "6px 10px",
-                        fontSize: 12,
-                        borderRadius: 8,
-                        border: "1px solid #ddd",
-                        cursor: "pointer",
-                        background: "white",
-                      }}
-                    >
-                      ⏳ Snooze
-                    </button>
-
-                    <button
-                      onClick={markDone}
-                      style={{
-                        padding: "6px 10px",
-                        fontSize: 12,
-                        borderRadius: 8,
-                        border: "1px solid #ddd",
-                        cursor: "pointer",
-                        background: "#DCFCE7",
-                      }}
-                    >
-                      ✅ Done
-                    </button>
-                    {/* 🗑️ Delete */}
-                    <button
-                      onClick={deleteSelectedMail}
-                      title="Delete Email"
-                      style={{
-                        padding: "6px 10px",
-                        fontSize: 14,
-                        borderRadius: 8,
-                        border: "1px solid #ddd",
-                        cursor: "pointer",
-                        background: "#FEE2E2",
-                      }}
-                    >
-                      🗑️
-                    </button>
-
-                    {/* 💎 Gemini */}
-                    <button
-                      onClick={() => setShowGemini(true)}
-                      title="Ask Gemini"
-                      style={{
-                        padding: "6px 10px",
-                        fontSize: 14,
-                        borderRadius: 8,
-                        border: "1px solid #ddd",
-                        cursor: "pointer",
-                        background: "#DBEAFE",
-                      }}
-                    >
-                      💎 Ask Gemini
-                    </button>
+                    <button className="btn" onClick={snoozeMail}><Ico.Clock /> Snooze</button>
+                    <button className="btn grn" onClick={markDone}><Ico.Check /> Done</button>
+                    <button className="btn red" onClick={deleteSelectedMail}><Ico.Trash /> Delete</button>
+                    <button className="btn pri" onClick={() => setShowGemini(true)}><Ico.Sparkle /> Ask AI</button>
                   </div>
                 </div>
-                {/* ✅ DEADLINE DETECTOR CARD */}
+
+                {/* ── DEADLINE ALERT ── */}
                 {deadline && (
-                  <div
-                    style={{
-                      background: "linear-gradient(135deg, #FEF9C3 0%, #FDE68A 100%)",
-                      padding: 10,
-                      borderRadius: 10,
-                      marginBottom: 0,
-                      border: "1px solid #FACC15",
-                      boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
-                    }}
-                  >
-                    <h3 style={{ margin: 0, fontWeight: 800, color: "#92400E" }}>
-                      ⏰ Deadline Alert
-                    </h3>
-
-                    <p style={{ marginTop: 8, fontSize: 14, color: "#78350F" }}>
-                      📅 <strong>Deadline:</strong> {deadline}
-                    </p>
-
-                    <p style={{ marginTop: 4, fontSize: 14, color: "#78350F" }}>
-                      ⚠️ <strong>Urgency:</strong> {urgency}
-                    </p>
+                  <div className="anim" style={{
+                    background: "linear-gradient(135deg,#FFFBEB,#FEF3C7)",
+                    border: "1px solid #FDE68A", borderRadius: 9,
+                    padding: "8px 12px", marginBottom: 10,
+                    display: "flex", alignItems: "center", gap: 8,
+                  }}>
+                    <Ico.Info />
+                    <div style={{ fontSize: 11.5, color: "#92400E" }}>
+                      <strong>Deadline Detected:</strong>&ensp;{deadline}&ensp;·&ensp;Urgency:&ensp;<strong>{urgency}</strong>
+                    </div>
                   </div>
                 )}
 
-                {/* ✅ STEP 4A - GRID FOR AI SUMMARY + WHY IMPORTANT */}
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr 1fr",
-                    gap: 18,
-                    marginBottom: 22,
-                  }}
-                >
-                  {/* AI Summary Card */}
-                  <div style={{
-                    background: "linear-gradient(135deg, rgba(109, 40, 217, 0.03) 0%, rgba(37, 99, 235, 0.03) 100%)",
-                    padding: 16,
-                    borderRadius: 16,
-                    boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
-                    border: "1px solid #E5E7EB"
-                  }}>
-                    <h3 style={{ fontSize: 15, marginBottom: 14, fontWeight: 700, color: "#111827" }}>
-                      ✨ AI Summary
-                    </h3>
-                    <button
-                      onClick={() => generateSummary(selectedMail)}
-                      style={{
-                        padding: "10px 18px",
-                        borderRadius: 10,
-                        border: "none",
-                        background: "linear-gradient(135deg, #6D28D9 0%, #2563EB 100%)",
-                        color: "white",
-                        cursor: "pointer",
-                        fontWeight: 600,
-                        marginBottom: 14,
-                        boxShadow: "0 4px 12px rgba(109, 40, 217, 0.25)",
-                        transition: "all 0.3s ease",
-                      }}
-                      onMouseOver={(e) => {
-                        e.currentTarget.style.transform = "translateY(-2px)";
-                        e.currentTarget.style.boxShadow = "0 6px 16px rgba(109, 40, 217, 0.35)";
-                      }}
-                      onMouseOut={(e) => {
-                        e.currentTarget.style.transform = "translateY(0)";
-                        e.currentTarget.style.boxShadow = "0 4px 12px rgba(109, 40, 217, 0.25)";
-                      }}
-                    >
+                {/* ── AI SUMMARY + WHY IMPORTANT ── */}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
+                  <div className="card-pu anim">
+                    <div className="card-ttl"><Ico.Sparkle /> AI Summary</div>
+                    <button className="ai-btn sm" onClick={() => generateSummary(selectedMail)} style={{ marginBottom: 7 }}>
                       Generate Summary
                     </button>
-
-                    <div
-                      style={{
-                        lineHeight: 1.8,
-                        whiteSpace: "pre-wrap",
-                        background: "white",
-                        padding: 18,
-                        borderRadius: 12,
-                        fontSize: 14,
-                        color: "#374151",
-                        border: "1px solid #E5E7EB"
-                      }}
-                    >
-                      {loadingAI ? "🔄 Generating AI summary..." : aiSummary || "Click button to generate summary"}
+                    <div style={{
+                      background: "#fff", borderRadius: 7, padding: "8px 10px",
+                      fontSize: 11, color: "#4C1D95", lineHeight: 1.65,
+                      border: "1px solid #DDD6FE", minHeight: 48, whiteSpace: "pre-wrap",
+                    }}>
+                      {loadingAI
+                        ? <span style={{ color: "#A78BFA" }}>Generating…</span>
+                        : aiSummary || <span style={{ color: "#C4B5FD" }}>Click to generate</span>}
                     </div>
                   </div>
 
-                  {/* Why Important Card */}
-                  <div
-                    style={{
-                      background: "linear-gradient(135deg, rgba(109, 40, 217, 0.03) 0%, rgba(14, 165, 233, 0.03) 100%)",
-                      padding: 24,
-                      borderRadius: 16,
-                      boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
-                      border: "1px solid #E5E7EB"
-                    }}
-                  >
-                    <h3 style={{ fontSize: 18, marginBottom: 14, fontWeight: 700, color: "#111827" }}>
-                      📌 Why Important?
-                    </h3>
-                    <button
-                      onClick={() => generateExplanation(selectedMail)}
-                      style={{
-                        padding: "10px 18px",
-                        background: "linear-gradient(135deg, #6D28D9 0%, #2563EB 100%)",
-                        color: "white",
-                        borderRadius: 10,
-                        border: "none",
-                        cursor: "pointer",
-                        marginBottom: 14,
-                        fontWeight: 600,
-                        boxShadow: "0 4px 12px rgba(109, 40, 217, 0.25)",
-                        transition: "all 0.3s ease",
-                      }}
-                      onMouseOver={(e) => {
-                        e.currentTarget.style.transform = "translateY(-2px)";
-                        e.currentTarget.style.boxShadow = "0 6px 16px rgba(109, 40, 217, 0.35)";
-                      }}
-                      onMouseOut={(e) => {
-                        e.currentTarget.style.transform = "translateY(0)";
-                        e.currentTarget.style.boxShadow = "0 4px 12px rgba(109, 40, 217, 0.25)";
-                      }}
-                    >
+                  <div className="card-pu anim">
+                    <div className="card-ttl"><Ico.Zap /> Why Important?</div>
+                    <button className="ai-btn sm" onClick={() => generateExplanation(selectedMail)} style={{ marginBottom: 7 }}>
                       Explain Importance
                     </button>
-
-                    <div
-                      style={{
-                        lineHeight: 1.8,
-                        whiteSpace: "pre-wrap",
-                        background: "white",
-                        padding: 18,
-                        borderRadius: 12,
-                        fontSize: 14,
-                        color: "#374151",
-                        border: "1px solid #E5E7EB"
-                      }}
-                    >
-                      {aiReason || "Click button to explain importance"}
+                    <div style={{
+                      background: "#fff", borderRadius: 7, padding: "8px 10px",
+                      fontSize: 11, color: "#4C1D95", lineHeight: 1.65,
+                      border: "1px solid #DDD6FE", minHeight: 48, whiteSpace: "pre-wrap",
+                    }}>
+                      {aiReason || <span style={{ color: "#C4B5FD" }}>Click to explain</span>}
                     </div>
                   </div>
                 </div>
 
-                {/* ✅ STEP 4B - GRID FOR TASKS + BURNOUT */}
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr 1fr",
-                    gap: 18,
-                    marginBottom: 22,
-                  }}
-                >
-                  {/* Tasks Extracted */}
-                  <div
-                    style={{
-                      background: "linear-gradient(135deg, rgba(14, 165, 233, 0.03) 0%, rgba(37, 99, 235, 0.03) 100%)",
-                      padding: 24,
-                      borderRadius: 16,
-                      boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
-                      border: "1px solid #E5E7EB"
-                    }}
-                  >
-                    <h3 style={{ fontSize: 18, marginBottom: 14, fontWeight: 700, color: "#111827" }}>
-                      ✅ Tasks Extracted
-                    </h3>
-                    {extractTasks(selectedMail?.snippet || selectedMail?.body || "").map((task, i) => (
-                      <p key={i} style={{ marginBottom: 8, color: "#374151", fontSize: 14 }}>
-                        • {task}
-                      </p>
+                {/* ── TASKS + BURNOUT ── */}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
+                  {/* tasks */}
+                  <div className="card anim">
+                    <div className="card-ttl"><Ico.Check /> Tasks Extracted</div>
+                    {extractTasks(selectedMail?.snippet || selectedMail?.body || "").map((task: string, i: number) => (
+                      <div key={i} style={{
+                        display: "flex", alignItems: "flex-start", gap: 5,
+                        padding: "5px 7px", borderRadius: 6, background: "#F5F3FF",
+                        marginBottom: 4, fontSize: 11, color: "#4C1D95",
+                        border: "1px solid #EDE9FE",
+                      }}>
+                        <span style={{ color: "#7C3AED", marginTop: 1, flexShrink: 0 }}>◆</span>{task}
+                      </div>
                     ))}
                   </div>
 
-                  {/* Burnout Dashboard */}
-                  <div
-                    style={{
-                      background: "linear-gradient(135deg, rgba(109, 40, 217, 0.05) 0%, rgba(37, 99, 235, 0.05) 100%)",
-                      padding: 24,
-                      borderRadius: 16,
-                      boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
-                      border: "1px solid #E5E7EB"
-                    }}
-                  >
-                    <h3 style={{ fontSize: 18, marginBottom: 14, fontWeight: 700, color: "#111827" }}>
-                      🔥 Burnout Dashboard
-                    </h3>
-                    <p style={{ marginBottom: 8, color: "#374151", fontSize: 14 }}>
-                      <strong style={{ color: "#111827" }}>Stress Level:</strong> {burnout.stressLevel}
-                    </p>
-                    <p style={{ marginBottom: 8, color: "#374151", fontSize: 14 }}>
-                      <strong style={{ color: "#111827" }}>Workload Trend:</strong> {burnout.workloadTrend}
-                    </p>
-                    <p style={{ fontSize: 13, color: "#6B7280", marginTop: 12 }}>
-                      <strong style={{ color: "#111827" }}>Recommendation:</strong> {burnout.recommendation}
-                    </p>
+                  {/* burnout */}
+                  <div className="card anim">
+                    <div className="card-ttl"><Ico.Fire /> Burnout Dashboard</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 7 }}>
+                      <div style={{
+                        width: 42, height: 42, borderRadius: "50%",
+                        background: `conic-gradient(${burnout.stressLevel === "High" ? "#DC2626" : burnout.stressLevel === "Medium" ? "#D97706" : "#059669"} ${burnout.stressScore * 3.6}deg, #EDE9FE 0deg)`,
+                        display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+                      }}>
+                        <div style={{ width: 30, height: 30, borderRadius: "50%", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9.5, fontWeight: 800, color: "#18103A" }}>
+                          {burnout.stressScore}
+                        </div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 11.5, fontWeight: 700, color: "#18103A" }}>{burnout.stressLevel} Stress</div>
+                        <div style={{ fontSize: 10.5, color: "#A78BFA", marginTop: 1 }}>{burnout.workloadTrend}</div>
+                      </div>
+                    </div>
+                    <div style={{ fontSize: 11, color: "#4C1D95", padding: "6px 8px", background: "#F5F3FF", borderRadius: 6, lineHeight: 1.55, border: "1px solid #EDE9FE" }}>
+                      💡 {burnout.recommendation}
+                    </div>
                   </div>
                 </div>
 
-                {/* AI Reply Generator - ✅ FULL WIDTH */}
-                <div
-                  style={{
-                    background: "linear-gradient(135deg, rgba(14, 165, 233, 0.05) 0%, rgba(37, 99, 235, 0.05) 100%)",
-                    padding: 24,
-                    borderRadius: 16,
-                    marginBottom: 20,
-                    boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
-                    border: "1px solid #E5E7EB",
-                    maxWidth: "100%",
-                  }}
-                >
-                  <h3 style={{ fontSize: 18, marginBottom: 14, fontWeight: 700, color: "#111827" }}>
-                    💬 AI Reply Generator
-                  </h3>
-
-                  <button
-                    onClick={generateReply}
-                    style={{
-                      padding: "10px 18px",
-                      borderRadius: 10,
-                      background: "linear-gradient(135deg, #0EA5E9 0%, #2563EB 100%)",
-                      color: "white",
-                      border: "none",
-                      cursor: "pointer",
-                      fontSize: 14,
-                      fontWeight: 600,
-                      boxShadow: "0 4px 12px rgba(14, 165, 233, 0.25)",
-                      transition: "all 0.3s ease",
-                    }}
-                    onMouseOver={(e) => {
-                      e.currentTarget.style.transform = "translateY(-2px)";
-                      e.currentTarget.style.boxShadow = "0 6px 16px rgba(14, 165, 233, 0.35)";
-                    }}
-                    onMouseOut={(e) => {
-                      e.currentTarget.style.transform = "translateY(0)";
-                      e.currentTarget.style.boxShadow = "0 4px 12px rgba(14, 165, 233, 0.25)";
-                    }}
-                  >
-                    {loadingReply ? "Generating..." : "Generate Reply"}
+                {/* ── AI REPLY GENERATOR ── */}
+                <div className="card anim" style={{ marginBottom: 8 }}>
+                  <div className="card-ttl"><Ico.Send /> AI Reply Generator</div>
+                  <button className="ai-btn" onClick={generateReply} style={{ marginBottom: aiReply ? 9 : 0 }}>
+                    <Ico.Sparkle /> {loadingReply ? "Generating…" : "Generate Reply"}
                   </button>
 
-                  {/* Show Generated Reply */}
                   {aiReply && (
-                    <div
-                      style={{
-                        marginTop: 14,
-                        padding: 18,
-                        background: "white",
-                        borderRadius: 12,
-                        border: "1px solid #E5E7EB",
-                        whiteSpace: "pre-wrap",
-                        lineHeight: 1.7,
-                        fontSize: 14,
-                        color: "#374151"
-                      }}
-                    >
-                      {aiReply}
-                    </div>
-                  )}
-
-                  {/* ✍ Editable Reply + Copy + Send Section */}
-                  {aiReply && (
-                    <div
-                      style={{
-                        marginTop: 18,
-                        padding: 18,
-                        background: "white",
-                        borderRadius: 12,
-                        border: "1px solid #E5E7EB",
-                      }}
-                    >
-                      <h4 style={{ fontWeight: 700, marginBottom: 10, color: "#111827" }}>
-                        ✍ Edit Reply Before Sending
-                      </h4>
-
-                      {/* Editable Textarea */}
-                      <textarea
-                        value={editableReply}
-                        onChange={(e) => setEditableReply(e.target.value)}
-                        rows={6}
-                        style={{
-                          width: "100%",
-                          padding: 14,
-                          borderRadius: 10,
-                          border: "1px solid #E5E7EB",
-                          fontSize: 14,
-                          resize: "none",
-                          fontFamily: "inherit",
-                          color: "#374151"
-                        }}
-                      />
-
-                      {/* Buttons Row */}
-                      <div
-                        style={{
-                          display: "flex",
-                          gap: 12,
-                          marginTop: 14,
-                        }}
-                      >
-                        {/* 📋 Copy Button */}
-                        <button
-                          onClick={() => {
-                            navigator.clipboard.writeText(editableReply);
-                            setCopied(true);
-                            setTimeout(() => setCopied(false), 2000);
-                          }}
-                          style={{
-                            padding: "10px 16px",
-                            borderRadius: 10,
-                            border: "none",
-                            cursor: "pointer",
-                            background: copied ? "#10b981" : "linear-gradient(135deg, #6D28D9 0%, #2563EB 100%)",
-                            color: "white",
-                            fontWeight: 600,
-                            transition: "all 0.3s ease",
-                            boxShadow: "0 4px 12px rgba(109, 40, 217, 0.25)",
-                          }}
-                        >
-                          {copied ? "✅ Copied!" : "📋 Copy"}
-                        </button>
-
-                        {/* ✉ Send Button */}
-                        <button
-                          onClick={async () => {
-                            if (!selectedMail) return alert("Select email first");
-
-                            const recipient = extractEmail(selectedMail.from);
-
-                            if (!recipient) {
-                              alert("❌ Cannot reply: No valid recipient email found");
-                              return;
-                            }
-
-                            const res = await fetch("/api/gmail/reply", {
-                              method: "POST",
-                              headers: { "Content-Type": "application/json" },
-                              body: JSON.stringify({
-                                to: recipient,
-                                subject: selectedMail.subject,
-                                body: editableReply,
-                                threadId: selectedMail.threadId,
-                                originalMessageId: selectedMail.messageId,
-                              }),
-                            });
-
-                            const data = await res.json();
-
-                            if (data.success) {
-                              alert("✅ Reply Sent Successfully!");
-                            } else {
-                              alert("❌ Error: " + data.error);
-                            }
-                          }}
-                          style={{
-                            padding: "10px 16px",
-                            borderRadius: 10,
-                            border: "none",
-                            cursor: "pointer",
-                            background: "linear-gradient(135deg, #0EA5E9 0%, #2563EB 100%)",
-                            color: "white",
-                            fontWeight: 600,
-                            transition: "all 0.3s ease",
-                            boxShadow: "0 4px 12px rgba(14, 165, 233, 0.25)",
-                          }}
-                        >
-                          ✉ Reply Now
-                        </button>
+                    <div className="anim">
+                      <div style={{
+                        background: "#F5F3FF", borderRadius: 7, padding: "8px 10px",
+                        fontSize: 11, color: "#4C1D95", lineHeight: 1.65,
+                        border: "1px solid #DDD6FE", marginBottom: 8, whiteSpace: "pre-wrap",
+                      }}>
+                        {aiReply}
+                      </div>
+                      <div style={{ border: "1px solid #EDE9FE", borderRadius: 8, padding: 10 }}>
+                        <div style={{ fontSize: 10.5, fontWeight: 700, color: "#4C1D95", marginBottom: 6 }}>Edit reply before sending</div>
+                        <textarea
+                          value={editableReply}
+                          onChange={e => setEditableReply(e.target.value)}
+                          rows={4}
+                          className="inp"
+                          style={{ resize: "vertical", marginBottom: 7 }}
+                        />
+                        <div style={{ display: "flex", gap: 6 }}>
+                          <button
+                            className="btn pri"
+                            onClick={() => { navigator.clipboard.writeText(editableReply); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
+                            style={{ background: copied ? "#059669" : undefined, borderColor: copied ? "#059669" : undefined }}
+                          >
+                            <Ico.Copy /> {copied ? "Copied!" : "Copy"}
+                          </button>
+                          <button
+                            className="btn pri"
+                            onClick={async () => {
+                              if (!selectedMail) return alert("Select email first");
+                              const recipient = extractEmail(selectedMail.from);
+                              if (!recipient) { alert("❌ Cannot reply: No valid recipient email found"); return; }
+                              const res = await fetch("/api/gmail/reply", {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({
+                                  to: recipient,
+                                  subject: selectedMail.subject,
+                                  body: editableReply,
+                                  threadId: selectedMail.threadId,
+                                  originalMessageId: selectedMail.messageId,
+                                }),
+                              });
+                              const data = await res.json();
+                              alert(data.success ? "✅ Reply Sent Successfully!" : "❌ Error: " + data.error);
+                            }}
+                          >
+                            <Ico.Send /> Reply Now
+                          </button>
+                        </div>
                       </div>
                     </div>
                   )}
                 </div>
 
-                {/* Link Section */}
+                {/* ── LINK BUTTON ── */}
                 {extractFirstLink(selectedMail?.body || selectedMail?.snippet || "") && (
-                  <div style={{
-                    marginBottom: 20,
-                    padding: 20,
-                    background: "linear-gradient(135deg, rgba(109, 40, 217, 0.05) 0%, rgba(14, 165, 233, 0.05) 100%)",
-                    borderRadius: 16,
-                    border: "1px solid #E5E7EB"
-                  }}>
+                  <div className="card anim" style={{ marginBottom: 8 }}>
+                    <div className="card-ttl"><Ico.Link /> Email Link</div>
                     <a
                       href={extractFirstLink(selectedMail?.body || selectedMail?.snippet || "") || "#"}
                       target="_blank"
                       rel="noreferrer"
                       style={{
-                        display: "inline-block",
-                        padding: "12px 24px",
-                        background: "linear-gradient(135deg, #0EA5E9 0%, #2563EB 100%)",
-                        color: "white",
-                        textDecoration: "none",
-                        borderRadius: 10,
-                        fontSize: 15,
-                        fontWeight: 700,
-                        boxShadow: "0 4px 12px rgba(14, 165, 233, 0.25)",
-                        transition: "all 0.3s ease",
-                      }}
-                      onMouseOver={(e) => {
-                        e.currentTarget.style.transform = "translateY(-2px)";
-                        e.currentTarget.style.boxShadow = "0 6px 16px rgba(14, 165, 233, 0.35)";
-                      }}
-                      onMouseOut={(e) => {
-                        e.currentTarget.style.transform = "translateY(0)";
-                        e.currentTarget.style.boxShadow = "0 4px 12px rgba(14, 165, 233, 0.25)";
+                        display: "inline-flex", alignItems: "center", gap: 5,
+                        padding: "6px 12px", borderRadius: 7,
+                        background: "linear-gradient(135deg,#7C3AED,#8B5CF6)",
+                        color: "#fff", textDecoration: "none", fontSize: 11.5, fontWeight: 700,
+                        boxShadow: "0 2px 9px rgba(124,58,237,.28)", fontFamily: "'DM Sans',sans-serif",
                       }}
                     >
-                      🔗 CLICK HERE FOR LINK
+                      <Ico.Link /> Open Link from Email
                     </a>
                   </div>
                 )}
 
-                {/* Related Emails */}
-                <div
-                  style={{
-                    background: "linear-gradient(135deg, rgba(14, 165, 233, 0.03) 0%, rgba(109, 40, 217, 0.03) 100%)",
-                    padding: 24,
-                    borderRadius: 16,
-                    marginBottom: 20,
-                    boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
-                    border: "1px solid #E5E7EB"
-                  }}
-                >
-                  <h3 style={{ fontSize: 18, marginBottom: 14, fontWeight: 700, color: "#111827" }}>
-                    📌 Related Emails
-                  </h3>
+                {/* ── RELATED EMAILS ── */}
+                <div className="card anim" style={{ marginBottom: 8 }}>
+                  <div className="card-ttl"><Ico.Inbox /> Related Emails</div>
                   {emails
-                    .filter((m) => m.subject?.includes(selectedMail.subject.split(" ")[0]))
+                    .filter(m => m.id !== selectedMail.id && m.subject?.includes(selectedMail.subject.split(" ")[0]))
                     .slice(0, 3)
-                    .map((m) => (
-                      <p key={m.id} style={{ marginBottom: 8, color: "#374151", fontSize: 14 }}>
-                        • {m.subject}
-                      </p>
-                    ))}
+                    .map((m: any) => (
+                      <div
+                        key={m.id}
+                        onClick={() => openMailAndGenerateAI(m.id, m)}
+                        style={{
+                          padding: "5px 7px", borderRadius: 6, marginBottom: 3,
+                          fontSize: 11, color: "#4C1D95", cursor: "pointer",
+                          background: "#F5F3FF", border: "1px solid #EDE9FE",
+                          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                        }}
+                        onMouseOver={e => (e.currentTarget.style.background = "#EDE9FE")}
+                        onMouseOut={e => (e.currentTarget.style.background = "#F5F3FF")}
+                      >
+                        · {m.subject}
+                      </div>
+                    ))
+                  }
+                  {emails.filter(m => m.id !== selectedMail.id && m.subject?.includes(selectedMail.subject.split(" ")[0])).length === 0 && (
+                    <div style={{ fontSize: 11, color: "#C4B5FD" }}>No related emails found.</div>
+                  )}
                 </div>
 
-                {/* Full Email Content */}
-                <div
-                  style={{
-                    background: "white",
-                    padding: 24,
-                    borderRadius: 16,
-                    marginBottom: 20,
-                    boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
-                    border: "1px solid #E5E7EB"
-                  }}
-                >
-                  <h3 style={{ fontSize: 18, marginBottom: 14, fontWeight: 700, color: "#111827" }}>
-                    📩 Full Email Content
-                  </h3>
-
+                {/* ── FULL EMAIL CONTENT ── */}
+                <div className="card anim" style={{ marginBottom: 8 }}>
+                  <div className="card-ttl"><Ico.File /> Full Email Content</div>
                   <iframe
-                    srcDoc={`<base target="_blank" />${selectedMail?.body || "<p>No content available</p>"}`}
-                    style={{
-                      width: "100%",
-                      height: "650px",
-                      border: "1px solid #E5E7EB",
-                      borderRadius: 12,
-                      background: "white",
-                    }}
+                    srcDoc={`<base target="_blank" />${selectedMail?.body || "<p style='font-family:sans-serif;color:#aaa;font-size:12px;padding:10px'>No content available</p>"}`}
+                    style={{ width: "100%", height: 540, border: "1px solid #EDE9FE", borderRadius: 8, background: "#fff" }}
                   />
                 </div>
 
-                {/* 📎 Attachments Section */}
+                {/* ── ATTACHMENTS ── */}
                 {selectedMail?.attachments?.length > 0 && (
-                  <div
-                    style={{
-                      marginTop: 20,
-                      padding: 24,
-                      borderRadius: 16,
-                      background: "linear-gradient(135deg, rgba(109, 40, 217, 0.03) 0%, rgba(14, 165, 233, 0.03) 100%)",
-                      border: "1px solid #E5E7EB"
-                    }}
-                  >
-                    <h3 style={{ fontWeight: 700, marginBottom: 14, color: "#111827", fontSize: 18 }}>
-                      📎 Attachments
-                    </h3>
-
+                  <div className="card anim" style={{ marginBottom: 8 }}>
+                    <div className="card-ttl">
+                      <Ico.Attach /> Attachments ({selectedMail.attachments.length})
+                    </div>
                     {selectedMail.attachments.map((file: any) => (
                       <div
                         key={file.attachmentId}
                         style={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          alignItems: "center",
-                          padding: 16,
-                          background: "white",
-                          borderRadius: 12,
-                          border: "1px solid #E5E7EB",
-                          marginBottom: 12,
+                          display: "flex", justifyContent: "space-between", alignItems: "center",
+                          padding: "7px 9px", background: "#FAF8FF",
+                          borderRadius: 7, border: "1px solid #EDE9FE", marginBottom: 5,
                         }}
                       >
-                        {/* File Name */}
                         <div>
-                          <div style={{ fontWeight: 600, color: "#111827" }}>📎 {file.filename}</div>
-                          <p style={{ fontSize: 12, color: "#6B7280", margin: "4px 0 0 0" }}>{file.mimeType}</p>
+                          <div style={{ fontWeight: 600, fontSize: 11.5, color: "#18103A" }}>📎 {file.filename}</div>
+                          <div style={{ fontSize: 10, color: "#A78BFA", marginTop: 1 }}>{file.mimeType}</div>
                         </div>
-
-                        {/* Buttons */}
-                        <div style={{ display: "flex", gap: 10 }}>
-                          {/* 👁 Preview */}
-                          <button
-                            onClick={() => setHoverFile(file)}
-                            style={{
-                              background: "linear-gradient(135deg, #6D28D9 0%, #2563EB 100%)",
-                              color: "white",
-                              border: "none",
-                              padding: "8px 14px",
-                              borderRadius: 8,
-                              cursor: "pointer",
-                              fontWeight: 600,
-                              boxShadow: "0 2px 8px rgba(109, 40, 217, 0.25)",
-                              transition: "all 0.3s ease",
-                            }}
-                          >
-                            👁 Preview
+                        <div style={{ display: "flex", gap: 5 }}>
+                          <button className="btn" onClick={() => setHoverFile(file)}>
+                            <Ico.Eye /> Preview
                           </button>
-
-                          {/* ⬇ Download */}
                           <a
                             href={`/api/gmail/attachment?id=${selectedMail.id}&att=${file.attachmentId}&mime=${file.mimeType}`}
                             target="_blank"
                             style={{
-                              background: "linear-gradient(135deg, #0EA5E9 0%, #2563EB 100%)",
-                              color: "white",
-                              padding: "8px 14px",
-                              borderRadius: 8,
-                              textDecoration: "none",
-                              fontWeight: 600,
-                              boxShadow: "0 2px 8px rgba(14, 165, 233, 0.25)",
-                              transition: "all 0.3s ease",
-                              display: "inline-block",
+                              display: "inline-flex", alignItems: "center", gap: 4,
+                              padding: "5px 9px", borderRadius: 7, fontSize: 11, fontWeight: 600,
+                              background: "#7C3AED", color: "#fff", textDecoration: "none",
+                              fontFamily: "'DM Sans',sans-serif",
                             }}
                           >
-                            ⬇ Download
+                            <Ico.Download /> Download
                           </a>
                         </div>
                       </div>
@@ -2582,299 +1844,101 @@ export default function Home() {
                   </div>
                 )}
 
-                {/* ✅ Center Preview Modal */}
+                {/* ── ATTACHMENT PREVIEW MODAL ── */}
                 {hoverFile && (
-                  <div
-                    onClick={() => setHoverFile(null)}
-                    style={{
-                      position: "fixed",
-                      top: 0,
-                      left: 0,
-                      width: "100vw",
-                      height: "100vh",
-                      background: "rgba(17, 24, 39, 0.7)",
-                      backdropFilter: "blur(8px)",
-                      display: "flex",
-                      justifyContent: "center",
-                      alignItems: "center",
-                      zIndex: 9999,
-                    }}
-                  >
-                    <div
-                      onClick={(e) => e.stopPropagation()}
-                      style={{
-                        width: "560px",
-                        height: "480px",
-                        background: "white",
-                        borderRadius: 20,
-                        padding: 24,
-                        boxShadow: "0 20px 60px rgba(0,0,0,0.3)",
-                      }}
-                    >
-                      <button
-                        onClick={() => setHoverFile(null)}
-                        style={{
-                          float: "right",
-                          background: "#dc2626",
-                          color: "white",
-                          border: "none",
-                          borderRadius: 10,
-                          padding: "8px 14px",
-                          cursor: "pointer",
-                          fontWeight: 600,
-                        }}
-                      >
-                        ✖ Close
-                      </button>
-
-                      <h3 style={{ fontWeight: 700, marginBottom: 16, color: "#111827" }}>
-                        👁 Preview: {hoverFile.filename}
-                      </h3>
-
+                  <div className="overlay" onClick={() => setHoverFile(null)}>
+                    <div className="modal anim" onClick={e => e.stopPropagation()} style={{ width: 520 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                        <div className="modal-ttl" style={{ margin: 0 }}>Preview: {hoverFile.filename}</div>
+                        <button className="btn red" onClick={() => setHoverFile(null)} style={{ fontSize: 10.5 }}>✕ Close</button>
+                      </div>
                       {hoverFile.mimeType.startsWith("image/") && (
                         <img
                           src={`/api/gmail/attachment?id=${selectedMail.id}&att=${hoverFile.attachmentId}&mime=${hoverFile.mimeType}`}
                           alt="preview"
-                          style={{
-                            width: "100%",
-                            height: "360px",
-                            objectFit: "contain",
-                            borderRadius: 12,
-                          }}
+                          style={{ width: "100%", height: 320, objectFit: "contain", borderRadius: 9, background: "#FAF8FF" }}
                         />
                       )}
-
                       {hoverFile.mimeType === "application/pdf" && (
                         <iframe
                           src={`/api/gmail/attachment?id=${selectedMail.id}&att=${hoverFile.attachmentId}&mime=${hoverFile.mimeType}`}
-                          style={{
-                            width: "100%",
-                            height: "360px",
-                            border: "none",
-                            borderRadius: 12,
-                          }}
+                          style={{ width: "100%", height: 320, border: "none", borderRadius: 9 }}
                         />
                       )}
-
-                      {!hoverFile.mimeType.startsWith("image/") &&
-                        hoverFile.mimeType !== "application/pdf" && (
-                          <p style={{ fontSize: 14, color: "#6B7280", marginTop: 20, textAlign: "center" }}>
-                            Preview not available for this file type.
-                          </p>
-                        )}
+                      {!hoverFile.mimeType.startsWith("image/") && hoverFile.mimeType !== "application/pdf" && (
+                        <div style={{ height: 140, display: "flex", alignItems: "center", justifyContent: "center", color: "#A78BFA", fontSize: 12 }}>
+                          Preview not available for this file type.
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
+
               </Fragment>
             )}
           </div>
         </div>
       </div>
-      {/* ✅ COMPOSE MODAL POPUP */}
+
+      {/* ══════════════════════════════════════════════════
+          COMPOSE MODAL
+      ══════════════════════════════════════════════════ */}
       {showCompose && (
-        <div
-          style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            width: "100%",
-            height: "100%",
-            background: "rgba(0,0,0,0.55)",
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
-            zIndex: 99999,
-          }}
-        >
-          <div
-            style={{
-              width: 520,
-              background: "white",
-              padding: 24,
-              borderRadius: 18,
-              boxShadow: "0 20px 60px rgba(0,0,0,0.3)",
-            }}
-          >
-            <h2 style={{ fontWeight: 800, fontSize: 18 }}>
-              ✍ Compose Email
-            </h2>
-
-            <input
-              placeholder="To"
-              style={{
-                width: "100%",
-                padding: 12,
-                marginTop: 14,
-                borderRadius: 10,
-                border: "1px solid #ddd",
-              }}
-            />
-
-            <input
-              placeholder="Subject"
-              style={{
-                width: "100%",
-                padding: 12,
-                marginTop: 10,
-                borderRadius: 10,
-                border: "1px solid #ddd",
-              }}
-            />
-
-            <textarea
-              placeholder="Write your email..."
-              rows={6}
-              style={{
-                width: "100%",
-                padding: 12,
-                marginTop: 10,
-                borderRadius: 10,
-                border: "1px solid #ddd",
-              }}
-            />
-
-            <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
-              <button
-                style={{
-                  flex: 1,
-                  padding: 12,
-                  borderRadius: 10,
-                  border: "none",
-                  background: "linear-gradient(135deg,#2563EB,#0EA5E9)",
-                  color: "white",
-                  fontWeight: 700,
-                  cursor: "pointer",
-                }}
-              >
-                Send
+        <div className="overlay">
+          <div className="modal anim">
+            <div className="modal-ttl">Compose Email</div>
+            <input placeholder="To" className="inp" style={{ marginBottom: 7 }} />
+            <input placeholder="Subject" className="inp" style={{ marginBottom: 7 }} />
+            <textarea placeholder="Write your email…" rows={5} className="inp" style={{ resize: "vertical", marginBottom: 12 }} />
+            <div style={{ display: "flex", gap: 7 }}>
+              <button className="ai-btn" style={{ flex: 1, justifyContent: "center" }}>
+                <Ico.Send /> Send Email
               </button>
-
-              <button
-                onClick={() => setShowCompose(false)}
-                style={{
-                  flex: 1,
-                  padding: 12,
-                  borderRadius: 10,
-                  border: "none",
-                  background: "#EF4444",
-                  color: "white",
-                  fontWeight: 700,
-                  cursor: "pointer",
-                }}
-              >
-                Close
+              <button className="btn" onClick={() => setShowCompose(false)} style={{ flex: 1, justifyContent: "center", padding: "8px 0" }}>
+                Cancel
               </button>
             </div>
           </div>
         </div>
       )}
-      {/* ✅ GEMINI MODAL POPUP */}
+
+      {/* ══════════════════════════════════════════════════
+          GEMINI / ASK AI MODAL
+      ══════════════════════════════════════════════════ */}
       {showGemini && (
-        <div
-          style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            width: "100%",
-            height: "100%",
-            background: "rgba(0,0,0,0.55)",
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
-            zIndex: 99999,
-          }}
-        >
-          <div
-            style={{
-              width: 520,
-              background: "white",
-              padding: 24,
-              borderRadius: 18,
-              boxShadow: "0 20px 60px rgba(0,0,0,0.3)",
-            }}
-          >
-            <h2 style={{ fontWeight: 800, fontSize: 18 }}>
-              💎 Ask Gemini
-            </h2>
-
-            {/* Question Input */}
+        <div className="overlay">
+          <div className="modal anim">
+            <div className="modal-ttl">Ask AI about this Email</div>
+            <div style={{ fontSize: 11, color: "#A78BFA", marginBottom: 10 }}>
+              Summarize, explain, extract action items, next steps — anything.
+            </div>
             <textarea
-              rows={4}
-              value={geminiQuestion}
-              onChange={(e) => setGeminiQuestion(e.target.value)}
-              placeholder="Ask Gemini about this email..."
-              style={{
-                width: "100%",
-                padding: 12,
-                borderRadius: 10,
-                border: "1px solid #ddd",
-                marginTop: 12,
-              }}
+              rows={3} value={geminiQuestion} onChange={e => setGeminiQuestion(e.target.value)}
+              placeholder="Ask anything about this email…"
+              className="inp" style={{ resize: "none", marginBottom: 8 }}
             />
-
-            {/* Ask Button */}
-            <button
-              onClick={askGemini}
-              style={{
-                marginTop: 14,
-                width: "100%",
-                padding: 12,
-                borderRadius: 10,
-                border: "none",
-                background: "linear-gradient(135deg,#2563EB,#0EA5E9)",
-                color: "white",
-                fontWeight: 700,
-                cursor: "pointer",
-              }}
-            >
-              {loadingGemini ? "Thinking..." : "Ask Gemini 💎"}
+            <button className="ai-btn" onClick={askGemini} style={{ width: "100%", justifyContent: "center", marginBottom: 8 }}>
+              <Ico.Sparkle /> {loadingGemini ? "Thinking…" : "Ask AI"}
             </button>
-
-            {/* Reply Output */}
             {geminiReply && (
-              <div
-                style={{
-                  marginTop: 14,
-                  padding: 14,
-                  background: "#F3F4F6",
-                  borderRadius: 12,
-                  fontSize: 14,
-                  whiteSpace: "pre-wrap",
-                  border: "1px solid #E5E7EB",
-                }}
-              >
+              <div className="anim" style={{
+                background: "#F5F3FF", borderRadius: 8, padding: "9px 11px",
+                fontSize: 11.5, color: "#4C1D95", lineHeight: 1.65,
+                border: "1px solid #DDD6FE", whiteSpace: "pre-wrap", marginBottom: 8,
+              }}>
                 {geminiReply}
               </div>
             )}
-
-            {/* Close */}
             <button
-              onClick={() => {
-                setShowGemini(false);
-                setGeminiQuestion("");
-                setGeminiReply("");
-              }}
-              style={{
-                marginTop: 14,
-                width: "100%",
-                padding: 12,
-                borderRadius: 10,
-                border: "none",
-                background: "#EF4444",
-                color: "white",
-                fontWeight: 700,
-                cursor: "pointer",
-              }}
+              className="btn"
+              onClick={() => { setShowGemini(false); setGeminiQuestion(""); setGeminiReply(""); }}
+              style={{ width: "100%", justifyContent: "center", padding: "7px 0" }}
             >
               Close
             </button>
           </div>
         </div>
       )}
-
-
-
-    </div>
-
+    </>
   );
 }

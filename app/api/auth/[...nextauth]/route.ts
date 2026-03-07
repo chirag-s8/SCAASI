@@ -32,6 +32,17 @@ export const authOptions: NextAuthOptions = {
   ],
 
   callbacks: {
+    // ✅ Redirect callback - always redirect to home page after signin
+    async redirect({ url, baseUrl }) {
+      // After signin, always go to home page
+      if (url.startsWith("/api/auth")) return baseUrl;
+      // Allows relative callback URLs
+      if (url.startsWith("/")) return `${baseUrl}${url}`;
+      // Allows callback URLs on the same origin
+      else if (new URL(url).origin === baseUrl) return url;
+      return baseUrl;
+    },
+
     // ✅ Save access token in JWT
     async jwt({ token, account }) {
       if (account) {
