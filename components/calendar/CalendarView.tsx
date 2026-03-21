@@ -10,14 +10,12 @@ type CalendarEvent = {
   type: "deadline" | "meeting" | "appointment" | "reminder";
   emailId?: string;
   description?: string;
-  reminderMinutes?: number;
 };
 
 type Props = {
   onEventClick?: (event: CalendarEvent) => void;
 };
 
-// Premium Mock Data explicitly for WOW factor if DB is empty
 const MOCK_EVENTS: CalendarEvent[] = [
   { id: "m1", title: "Product Launch Strategy Sync", date: new Date(), time: "10:00", type: "meeting", description: "Review Q3 marketing assets." },
   { id: "m2", title: "Vendor Payment Due", date: new Date(), time: "14:00", type: "deadline", description: "Clear AWS infrastructure invoice." },
@@ -32,23 +30,53 @@ export default function CalendarView({ onEventClick }: Props) {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Modal Form State
+  const [newEventTitle, setNewEventTitle] = useState("");
+  const [newEventDate, setNewEventDate] = useState(new Date().toISOString().split("T")[0]);
+  const [newEventTime, setNewEventTime] = useState("");
+  const [newEventType, setNewEventType] = useState("meeting");
+
+  const loadEvents = () => {
+    const rawEvents = localStorage.getItem("scasi_calendar_events");
+    if (rawEvents) {
+      const parsed = JSON.parse(rawEvents);
+      setEvents(parsed.map((e: any) => ({ ...e, date: new Date(e.date) })));
+    } else {
+      setEvents(MOCK_EVENTS);
+      localStorage.setItem("scasi_calendar_events", JSON.stringify(MOCK_EVENTS));
+    }
+  };
+
   useEffect(() => {
-    fetch("/api/calendar/events")
-      .then(res => res.json())
-      .then(data => {
-        if (!data.error && data.events && data.events.length > 0) {
-          setEvents(data.events.map((e: any) => ({ ...e, date: new Date(e.date) })));
-        } else {
-          // Fallback to beautiful mock data so user is wowed instead of seeing emptiness
-          setEvents(MOCK_EVENTS);
-        }
-      })
-      .catch((err) => {
-        console.error(err);
-        setEvents(MOCK_EVENTS);
-      })
-      .finally(() => setLoading(false));
+    loadEvents();
+    setLoading(false);
+
+    const handleSync = () => loadEvents();
+    window.addEventListener("calendarSync", handleSync);
+    return () => window.removeEventListener("calendarSync", handleSync);
   }, []);
+
+  const handleSaveEvent = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newEventTitle || !newEventDate) return;
+
+    const newEvent: CalendarEvent = {
+        id: "evt_" + Date.now(),
+        title: newEventTitle,
+        date: new Date(newEventDate),
+        time: newEventTime || undefined,
+        type: newEventType as any
+    };
+
+    const updatedEvents = [...events, newEvent];
+    setEvents(updatedEvents);
+    localStorage.setItem("scasi_calendar_events", JSON.stringify(updatedEvents));
+    window.dispatchEvent(new Event("calendarSync")); // Notify globally
+    
+    setShowAddModal(false);
+    setNewEventTitle("");
+    setNewEventTime("");
+  };
 
   const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
@@ -105,7 +133,7 @@ export default function CalendarView({ onEventClick }: Props) {
           <h2 style={{ fontSize: 28, fontWeight: 800, color: "#18103A", letterSpacing: "-0.5px", marginBottom: 4 }}>
             📅 Intelligent Calendar
           </h2>
-          <p style={{ color: "#7a72a8", fontSize: 14 }}>Seamlessly extracted from your inbox deadlines & meetings.</p>
+          <p style={{ color: "#7a72a8", fontSize: 14 }}>Add events manually or auto-extract from your inbox with intelligent alerts 30 & 5 minutes before.</p>
         </div>
         <button
           className="cal-btn"
@@ -122,7 +150,7 @@ export default function CalendarView({ onEventClick }: Props) {
             boxShadow: "0 4px 14px rgba(124,58,237,0.25)"
           }}
         >
-          + New Event
+          + Add New Event
         </button>
       </div>
 
@@ -246,8 +274,8 @@ export default function CalendarView({ onEventClick }: Props) {
           </div>
           
           <div style={{ background: "linear-gradient(135deg, #7C3AED 0%, #4F46E5 100%)", padding: 24, borderRadius: 24, color: "white", boxShadow: "0 12px 30px rgba(124,58,237,0.2)" }}>
-            <h3 style={{ fontSize: 16, fontWeight: 800, marginBottom: 8 }}>✨ AI Auto-Scheduling</h3>
-            <p style={{ fontSize: 12, opacity: 0.9, lineHeight: 1.6 }}>Scasi has automatically detected 3 deadlines and 2 meetings from your inbox this week. You're fully covered!</p>
+            <h3 style={{ fontSize: 16, fontWeight: 800, marginBottom: 8 }}>✨ Active Notifications</h3>
+            <p style={{ fontSize: 12, opacity: 0.9, lineHeight: 1.6 }}>Any event created with a set time will now push a browser notification strictly to you 30 mins and 5 mins exactly before it begins.</p>
           </div>
         </div>
 
@@ -255,32 +283,30 @@ export default function CalendarView({ onEventClick }: Props) {
 
       {/* Modern Add Event Modal */}
       {showAddModal && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(15,9,38,0.7)", backdropFilter: "blur(12px)", zIndex: 10000, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div className="anim" style={{ position: "fixed", inset: 0, background: "rgba(15,9,38,0.7)", backdropFilter: "blur(12px)", zIndex: 10000, display: "flex", alignItems: "center", justifyContent: "center" }}>
           <div style={{ background: "white", padding: 32, borderRadius: 24, width: "100%", maxWidth: 420, boxShadow: "0 24px 60px rgba(24,16,58,0.15)", border: "1px solid #E2D9F3" }}>
             <h3 style={{ fontSize: 22, fontWeight: 800, marginBottom: 24, color: "#18103A" }}>✨ New Event</h3>
-            <form onSubmit={(e) => {
-              e.preventDefault();
-              setShowAddModal(false);
-            }}>
+            <form onSubmit={handleSaveEvent}>
               <div style={{ marginBottom: 16 }}>
                 <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#7a72a8", marginBottom: 6, textTransform: "uppercase", letterSpacing: "1px" }}>Title</label>
-                <input required style={{ width: "100%", padding: "12px 14px", borderRadius: 10, border: "1px solid #E2D9F3", background: "#FAF8FF", outline: "none", fontFamily: "'DM Sans'", fontSize: 14 }} />
+                <input value={newEventTitle} onChange={e => setNewEventTitle(e.target.value)} required placeholder="Website Launch Sync" style={{ width: "100%", padding: "12px 14px", borderRadius: 10, border: "1px solid #E2D9F3", background: "#FAF8FF", outline: "none", fontFamily: "'DM Sans'", fontSize: 14 }} />
               </div>
               <div style={{ display: "flex", gap: 16, marginBottom: 16 }}>
                 <div style={{ flex: 1 }}>
                   <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#7a72a8", marginBottom: 6, textTransform: "uppercase" }}>Date</label>
-                  <input type="date" required defaultValue={currentDate.toISOString().split("T")[0]} style={{ width: "100%", padding: "12px 14px", borderRadius: 10, border: "1px solid #E2D9F3", background: "#FAF8FF", outline: "none", fontFamily: "'DM Sans'", fontSize: 14 }} />
+                  <input type="date" value={newEventDate} onChange={e => setNewEventDate(e.target.value)} required style={{ width: "100%", padding: "12px 14px", borderRadius: 10, border: "1px solid #E2D9F3", background: "#FAF8FF", outline: "none", fontFamily: "'DM Sans'", fontSize: 14 }} />
                 </div>
                 <div style={{ flex: 1 }}>
-                  <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#7a72a8", marginBottom: 6, textTransform: "uppercase" }}>Time</label>
-                  <input type="time" style={{ width: "100%", padding: "12px 14px", borderRadius: 10, border: "1px solid #E2D9F3", background: "#FAF8FF", outline: "none", fontFamily: "'DM Sans'", fontSize: 14 }} />
+                  <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#7a72a8", marginBottom: 6, textTransform: "uppercase" }}>Time (For Alerts)</label>
+                  <input type="time" value={newEventTime} onChange={e => setNewEventTime(e.target.value)} style={{ width: "100%", padding: "12px 14px", borderRadius: 10, border: "1px solid #E2D9F3", background: "#FAF8FF", outline: "none", fontFamily: "'DM Sans'", fontSize: 14 }} />
                 </div>
               </div>
               <div style={{ marginBottom: 24 }}>
                 <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#7a72a8", marginBottom: 6, textTransform: "uppercase" }}>Event Type</label>
-                <select style={{ width: "100%", padding: "12px 14px", borderRadius: 10, border: "1px solid #E2D9F3", background: "#FAF8FF", outline: "none", fontFamily: "'DM Sans'", fontSize: 14 }}>
+                <select value={newEventType} onChange={e => setNewEventType(e.target.value)} style={{ width: "100%", padding: "12px 14px", borderRadius: 10, border: "1px solid #E2D9F3", background: "#FAF8FF", outline: "none", fontFamily: "'DM Sans'", fontSize: 14 }}>
                   <option value="meeting">Meeting</option>
                   <option value="deadline">Deadline</option>
+                  <option value="appointment">Appointment</option>
                   <option value="reminder">Reminder</option>
                 </select>
               </div>

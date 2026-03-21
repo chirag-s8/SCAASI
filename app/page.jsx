@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import Footer from "@/components/Footer";
 import MailMindDashboard from "@/components/dashboard/MailMindDashboard";
 import CalendarView from "@/components/calendar/CalendarView";
+import CalendarNotifier from "@/components/calendar/CalendarNotifier";
 import TeamCollaboration from "@/components/team/TeamCollaboration";
 import EmailTeamPanel from "@/components/team/EmailTeamPanel";
 import dynamic from "next/dynamic";
@@ -2282,6 +2283,8 @@ export default function Home() {
           </div>
         </div>
       )}
+      {/* GLOBAL NOTIFICATION MANAGER */}
+      <CalendarNotifier />
     </>
   );
 }
