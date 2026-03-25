@@ -71,35 +71,48 @@ export class WakeWordListener {
 
   private _createAndStart(): void {
     const Ctor = getSpeechRecognitionConstructor();
-    if (!Ctor) return;
+    if (!Ctor || !this.running || this.paused) return;
+
+    // Always create a fresh instance — reusing the same rec after onend causes
+    // silent failures in Chrome where the mic appears open but never fires onresult
+    if (this.recognition) {
+      try { this.recognition.abort(); } catch { /* ignore */ }
+      this.recognition = null;
+    }
 
     const rec = new Ctor();
     rec.continuous = true;
-    rec.interimResults = false;
+    rec.interimResults = true; // interim lets us catch the phrase faster
     rec.lang = 'en-US';
+    rec.maxAlternatives = 3;
 
     rec.onresult = (event: any) => {
       for (let i = event.resultIndex; i < event.results.length; i++) {
-        const transcript: string = event.results[i][0].transcript.toLowerCase().trim();
-        // Match exact phrase or common mishearings of "hey scasi"
-        const isWake =
-          transcript.includes(this.wakePhrase) ||
-          transcript.includes('scasi') ||
-          transcript.includes('sassy') ||
-          transcript.includes('hey cassie') ||
-          transcript.includes('hey sassy') ||
-          transcript.includes('hey stacy') ||
-          transcript.includes('hey kasey');
-        if (isWake) {
-          this.onDetected();
+        // Check both final and interim results for faster response
+        for (let alt = 0; alt < event.results[i].length; alt++) {
+          const transcript: string = event.results[i][alt].transcript.toLowerCase().trim();
+          const isWake =
+            transcript.includes(this.wakePhrase) ||
+            transcript.includes('hey scasi') ||
+            transcript.includes('scasi') ||
+            transcript.includes('hey sassy') ||
+            transcript.includes('hey cassie') ||
+            transcript.includes('hey stacy') ||
+            transcript.includes('hey kasey') ||
+            transcript.includes('hey casey') ||
+            transcript.includes('hey spacey');
+          if (isWake) {
+            this.onDetected();
+            return; // fire once per detection
+          }
         }
       }
     };
 
     rec.onend = () => {
-      // Only restart if still running AND not paused — prevents mic conflict with session STT
+      // Restart with a fresh instance — never reuse the ended rec
       if (this.running && !this.paused) {
-        try { rec.start(); } catch { /* ignore race */ }
+        setTimeout(() => this._createAndStart(), 300);
       }
     };
 
@@ -108,8 +121,9 @@ export class WakeWordListener {
         this.running = false;
         return;
       }
-      if (this.running) {
-        setTimeout(() => { try { rec.start(); } catch { /* ignore */ } }, 1000);
+      // no-speech / aborted / network — restart fresh after a short delay
+      if (this.running && !this.paused) {
+        setTimeout(() => this._createAndStart(), 500);
       }
     };
 
@@ -117,7 +131,8 @@ export class WakeWordListener {
       rec.start();
       this.recognition = rec;
     } catch {
-      this.running = false;
+      // Failed to start — retry after delay
+      setTimeout(() => { if (this.running && !this.paused) this._createAndStart(); }, 1000);
     }
   }
 }
