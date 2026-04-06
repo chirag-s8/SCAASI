@@ -100,7 +100,19 @@ export class WakeWordListener {
             transcript.includes('hey stacy') ||
             transcript.includes('hey kasey') ||
             transcript.includes('hey casey') ||
-            transcript.includes('hey spacey');
+            transcript.includes('hey spacey') ||
+            transcript.includes('hey scotty') ||
+            transcript.includes('hey scarce') ||
+            transcript.includes('hey skasi') ||
+            transcript.includes('a scasi') ||
+            transcript.includes('hey scas') ||
+            transcript.includes('hey scarsi') ||
+            transcript.includes('hey quasi') ||
+            transcript.includes('hey khasi') ||
+            transcript.includes('hey causey') ||
+            transcript.includes('hey kasi') ||
+            (transcript.includes('hey sc') && transcript.includes('si')) ||
+            transcript.includes('hey squas');
           if (isWake) {
             this.onDetected();
             return; // fire once per detection
@@ -112,7 +124,7 @@ export class WakeWordListener {
     rec.onend = () => {
       // Restart with a fresh instance — never reuse the ended rec
       if (this.running && !this.paused) {
-        setTimeout(() => this._createAndStart(), 300);
+        setTimeout(() => this._createAndStart(), 150);
       }
     };
 
@@ -123,7 +135,7 @@ export class WakeWordListener {
       }
       // no-speech / aborted / network — restart fresh after a short delay
       if (this.running && !this.paused) {
-        setTimeout(() => this._createAndStart(), 500);
+        setTimeout(() => this._createAndStart(), 250);
       }
     };
 

@@ -24,6 +24,19 @@ export * from './types';
 
 const MAX_REACT_ITERATIONS = 5;
 
+const EMAIL_KEYWORDS = /\b(email|emails|inbox|unread|mail|send|reply|draft|gmail|message|messages|sender|subject|attachment|compose|forward|spam|trash|archive|starred|label)\b/i;
+
+const DIRECT_ANSWER_SYSTEM =
+    'You are Scasi, a brilliant and powerful AI assistant with world-class expertise across every domain — ' +
+    'science, technology, mathematics, history, philosophy, medicine, law, finance, coding, creative writing, and more. ' +
+    'You give thorough, accurate, and insightful answers that rival the best human experts. ' +
+    'IMPORTANT: Your response will be spoken aloud via text-to-speech. ' +
+    'Use short, clear sentences. Do NOT use markdown, bullet points, asterisks, dashes, or special formatting characters. ' +
+    'Speak naturally and confidently, as if you are an expert having a conversation. ' +
+    'Give comprehensive, detailed answers. Include concrete facts, examples, and explanations. ' +
+    'Be direct and authoritative. Never hedge or qualify unnecessarily. ' +
+    'If you truly do not know something, say so honestly.';
+
 // ---------------------------------------------------------------------------
 // Internal ReAct core event types (not exported — implementation detail)
 // ---------------------------------------------------------------------------
@@ -97,15 +110,17 @@ Only route to handle_for_me when the user explicitly says they want the full aut
 Return JSON: { "workflow": "...", "target": "optional person name", "reasoning": "..." }`;
 
 function buildReActSystemPrompt(): string {
-    return `You are Scasi, a powerful and precise AI email assistant. You help users manage their Gmail inbox with confidence and accuracy.
+    return `You are Scasi, a brilliant and powerful AI assistant. You are exceptionally knowledgeable across all domains — science, technology, history, current events, math, coding, creative writing, philosophy, health, finance, and more. You also specialize in managing Gmail inboxes.
 
 You have access to these tools:
 ${getToolDescriptionsForLLM()}
 
-To use a tool, respond with JSON:
+RESPOND WITH JSON ONLY. No prose, no markdown outside the JSON object.
+
+To use a tool, respond with this exact JSON:
 { "thought": "your reasoning", "tool": "tool_name", "toolInput": { ... } }
 
-When you have enough information to answer, respond with:
+When you have enough information to answer, respond with this exact JSON:
 { "thought": "your reasoning", "answer": "your final answer to the user" }
 
 MANDATORY INBOX RULES — follow these without exception:
@@ -118,11 +133,12 @@ MANDATORY INBOX RULES — follow these without exception:
 7. After getting tool results, answer with the EXACT data returned (real names, subjects, counts).
 8. If the tool returns an error or empty results, say so clearly.
 
-General rules:
-- Always think before acting
-- Be direct, confident, and specific in your answers
-- Format answers clearly with specific details (sender names, subjects, dates)
-- If you cannot find something, say so clearly rather than guessing`;
+General knowledge rules:
+- For non-email questions, answer directly from your knowledge — do NOT use tools.
+- Be confident, thorough, and authoritative in your answers.
+- Always think before acting.
+- Be direct, specific, and precise. Never hedge unnecessarily.
+- If you don't know something, say so clearly rather than guessing.`;
 }
 
 const ReActResponseSchema = z.object({
@@ -162,9 +178,16 @@ export class OrchestratorAgent implements Agent<OrchestratorRequest, Orchestrato
             case 'reply_to':
                 result = await replyTo(ctx, validated, intent.target ?? 'unknown');
                 break;
-            default:
-                result = await this.reactLoop(ctx, validated, history, traceId);
+            default: {
+                const isGeneralKnowledge = !validated.emailContext && !EMAIL_KEYWORDS.test(validated.userMessage);
+                if (isGeneralKnowledge) {
+                    const directAnswer = await this.directAnswer(validated, history, traceId);
+                    result = { answer: directAnswer, trace: [], steps: [] };
+                } else {
+                    result = await this.reactLoop(ctx, validated, history, traceId);
+                }
                 break;
+            }
         }
 
         if (validated.sessionId) {
@@ -245,7 +268,12 @@ export class OrchestratorAgent implements Agent<OrchestratorRequest, Orchestrato
                 break;
             }
             default: {
-                answer = yield* this.streamReactLoop(ctx, validated, history, traceId);
+                const isGeneralKnowledge = !validated.emailContext && !EMAIL_KEYWORDS.test(validated.userMessage);
+                if (isGeneralKnowledge) {
+                    answer = yield* this.streamDirectAnswer(validated, history, traceId);
+                } else {
+                    answer = yield* this.streamReactLoop(ctx, validated, history, traceId);
+                }
                 tokensAlreadyStreamed = true;
                 break;
             }
@@ -295,8 +323,8 @@ export class OrchestratorAgent implements Agent<OrchestratorRequest, Orchestrato
                 schema: ReActResponseSchema,
                 systemPrompt,
                 traceId,
-                temperature: 0.5,
-                maxTokens: 1024,
+                temperature: 0.3,
+                maxTokens: 2048,
             });
 
             if (!result.data) {
@@ -541,18 +569,68 @@ export class OrchestratorAgent implements Agent<OrchestratorRequest, Orchestrato
             : '\n\nNow provide your final answer to the user. Be concise, helpful, and use markdown for readability.';
         const finalPrompt = `${conversationContext}\n\nThought: ${lastThought}${answerHint}`;
         const finalSystemPrompt =
-            'You are Scasi, a powerful AI email assistant. Based on the reasoning and observations above, ' +
-            'provide a clear, direct, and accurate response to the user. ' +
+            'You are Scasi, a brilliant and powerful AI assistant with deep expertise across all domains. ' +
+            'Based on the reasoning and observations above, provide a comprehensive, accurate, and insightful response. ' +
             'IMPORTANT: Your response will be spoken aloud via text-to-speech. ' +
             'Use short, clear sentences. Do NOT use markdown, bullet points, asterisks, or special characters. ' +
-            'Speak naturally as if talking to the user. Be specific — include real names, subjects, and counts from the data. ' +
-            'Never guess or fabricate email details. If data is unavailable, say so clearly.';
+            'Speak naturally and confidently as if you are an expert talking to the user. ' +
+            'Give thorough, detailed answers that demonstrate deep knowledge. ' +
+            'Be specific — include real names, subjects, counts, facts, and concrete details. ' +
+            'Never guess or fabricate information. If data is unavailable, say so clearly.';
 
         let collected = '';
         for await (const token of llmRouter.streamText('reply', finalPrompt, {
             systemPrompt: finalSystemPrompt,
-            temperature: 0.5,
-            maxTokens: 2048,
+            temperature: 0.3,
+            maxTokens: 3000,
+            traceId,
+        })) {
+            collected += token;
+            yield { type: 'token', text: token };
+        }
+
+        return collected || 'I was unable to generate a response. Please try again.';
+    }
+
+    // -----------------------------------------------------------------------
+    // Fast path: direct answer for general (non-email) queries
+    // -----------------------------------------------------------------------
+
+    private async directAnswer(
+        req: OrchestratorRequest,
+        history: Array<{ role: string; content: string }>,
+        traceId: string
+    ): Promise<string> {
+        const historyContext = history.length > 0
+            ? history.slice(-10).map(m => `${m.role}: ${m.content}`).join('\n') + '\n\n'
+            : '';
+        const prompt = `${historyContext}User: ${req.userMessage}`;
+
+        const result = await llmRouter.generateText('reply', prompt, {
+            systemPrompt: DIRECT_ANSWER_SYSTEM,
+            temperature: 0.3,
+            maxTokens: 3000,
+            traceId,
+        });
+
+        return result.text || 'I was unable to generate a response. Please try again.';
+    }
+
+    private async *streamDirectAnswer(
+        req: OrchestratorRequest,
+        history: Array<{ role: string; content: string }>,
+        traceId: string
+    ): AsyncGenerator<ChatStreamEvent, string> {
+        const historyContext = history.length > 0
+            ? history.slice(-10).map(m => `${m.role}: ${m.content}`).join('\n') + '\n\n'
+            : '';
+        const prompt = `${historyContext}User: ${req.userMessage}`;
+
+        let collected = '';
+        for await (const token of llmRouter.streamText('reply', prompt, {
+            systemPrompt: DIRECT_ANSWER_SYSTEM,
+            temperature: 0.3,
+            maxTokens: 3000,
             traceId,
         })) {
             collected += token;

@@ -23,10 +23,10 @@ import { truncateToWords } from './voiceUtils';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-const GREETING        = "Yeah?";
+const GREETING        = "Hey!";
 const CLOSING_FAREWELL = "Happy to help! Have a great day.";
 const MAX_TTS_WORDS   = 500;
-const SILENCE_TIMEOUT = 20000;
+const SILENCE_TIMEOUT = 15000;
 
 const DONE_PHRASES = new Set([
   'yes', 'yeah', 'yep', 'yup', 'sure', 'ok', 'okay', 'done', 'yes i am',
@@ -123,7 +123,7 @@ export function useVoiceController(options: VoiceControllerOptions = {}): VoiceC
         const utt = new SpeechSynthesisUtterance(truncateToWords(text, MAX_TTS_WORDS));
         const voice = pickFemaleVoice();
         if (voice) utt.voice = voice;
-        utt.rate   = 1.0;
+        utt.rate   = 1.1;
         utt.pitch  = 1.15;
         utt.volume = 1.0;
         const safetyTimeout = setTimeout(() => { window.speechSynthesis.cancel(); resolve(); }, 30_000);
@@ -352,7 +352,7 @@ export function useVoiceController(options: VoiceControllerOptions = {}): VoiceC
 
     // Brief pause so the wake-word listener can fully release the mic
     // before we open a new SpeechRecognition instance.
-    await new Promise(r => setTimeout(r, 800));
+    await new Promise(r => setTimeout(r, 350));
     if (!activeRef.current) return;
 
     // Greet first, then listen
