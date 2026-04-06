@@ -24,11 +24,17 @@ export async function POST(req: Request) {
         await ensureUser(userId, session.user?.email ?? '', session.user?.name, session.user?.image);
     } catch (err: unknown) {
         const message = err instanceof Error ? err.message : 'Failed to provision user';
-        console.error('[/api/chat] ensureUserExists failed:', message);
-        return new Response(JSON.stringify({ error: message }), {
-            status: 500,
-            headers: { 'Content-Type': 'application/json' },
-        });
+        console.error('[/api/chat] ensureUserExists failed (continuing anyway):', message);
+        // Derive userId from email even if DB upsert failed — chat can still work
+        const { getAppUserIdFromSession } = await import('@/lib/appUser');
+        try {
+            userId = getAppUserIdFromSession(session);
+        } catch {
+            return new Response(JSON.stringify({ error: 'Unable to identify user' }), {
+                status: 500,
+                headers: { 'Content-Type': 'application/json' },
+            });
+        }
     }
 
     const body = await req.json().catch(() => null);
