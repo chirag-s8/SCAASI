@@ -201,11 +201,15 @@ export function useVoiceController(options: VoiceControllerOptions = {}): VoiceC
         }),
       });
 
-      if (!res.ok) throw new Error(`Chat API error: ${res.status}`);
+      if (!res.ok) {
+        const errText = await res.text().catch(() => res.status.toString());
+        throw new Error(`Chat API error ${res.status}: ${errText}`);
+      }
 
       const reader = res.body?.getReader();
       const decoder = new TextDecoder();
       let answer = '';
+      let serverError = '';
 
       if (reader) {
         let buf = '';
@@ -220,10 +224,13 @@ export function useVoiceController(options: VoiceControllerOptions = {}): VoiceC
             try {
               const ev = JSON.parse(line.slice(6));
               if (ev.type === 'token' && ev.text) answer += ev.text;
-            } catch { /* skip */ }
+              if (ev.type === 'error') serverError = ev.message || 'Server error';
+            } catch { /* skip malformed SSE */ }
           }
         }
       }
+
+      if (serverError && !answer) throw new Error(serverError);
 
       if (!answer) answer = "Sorry, I couldn't get a response. Could you try asking again?";
       cbAnswer.current?.(answer, text);
@@ -236,13 +243,14 @@ export function useVoiceController(options: VoiceControllerOptions = {}): VoiceC
       startListening();
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : 'Unknown error';
+      console.error('[Voice] processTranscript error:', errMsg);
       cbError.current?.({
         code: 'ORCHESTRATOR_ERROR',
         message: errMsg,
       });
       if (!activeRef.current) return;
 
-      const spokenError = "Sorry, I ran into an issue. Could you try asking again?";
+      const spokenError = `Sorry, I ran into an issue. ${errMsg.includes('401') ? 'Please sign out and sign back in.' : 'Could you try asking again?'}`;
       cbAnswer.current?.(spokenError, text);
       setVoiceState('speaking');
       await speak(spokenError);
