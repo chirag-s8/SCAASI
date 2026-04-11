@@ -72,8 +72,11 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: message }, { status: 500 });
     }
 
+    const url = new URL(req.url);
+    const isBackfill = url.searchParams.get('backfill') === 'true';
+
     const body = await req.json().catch(() => ({}));
-    const maxEmails = Math.min(
+    const maxEmails = isBackfill ? 3000 : Math.min(
         (body as Record<string, number>).maxEmails ?? DEFAULT_MAX_EMAILS,
         100
     );
@@ -137,6 +140,7 @@ export async function POST(req: Request) {
     const result = await ragAgent.upsertEmails({
         emails,
         userId,
+        skipEmbedding: isBackfill,
     });
 
     return NextResponse.json({
